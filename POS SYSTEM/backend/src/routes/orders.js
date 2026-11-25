@@ -3,9 +3,7 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 
 function generateOrderNumber() {
-  const prefix = 'POS-0';
-  const random = Math.floor(1000 + Math.random() * 9000); // 4 random digits
-  return `${prefix}${random}`;
+  return String(Math.floor(10000 + Math.random() * 90000)); // 5 digits
 }
 
 

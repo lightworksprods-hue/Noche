@@ -424,8 +424,10 @@ export default function OrderConfirmation() {
   // the equivalent booked stage after the workflow was simplified.
   const displayStatus = order.status === 'preparing' ? 'booked' : order.status;
   const currentStep = statusSteps.findIndex(s => s.key === displayStatus);
-  const hasOutstandingBalance = order.paymentMode === 'downpayment' && order.paymentStatus !== 'paid';
-  const outstandingBalance = Math.max(Number(order.total || 0) * 0.5, 0);
+  const isDownpayment = order.paymentMode === 'downpayment';
+  const payableBalance = isDownpayment && order.paymentStatus !== 'paid'
+    ? Math.max(Number(order.total || 0) * 0.5, 0)
+    : 0;
   const isCancelled = order.status === 'cancelled';
   const isCompleted = order.status === 'completed';
   const isReady = order.status === 'ready';
@@ -454,7 +456,7 @@ export default function OrderConfirmation() {
 
           <p className="text-[10px] sm:text-xs md:text-sm font-bold uppercase tracking-[0.15em] mb-3 sm:mb-4" style={{ color: brandingColor }}>Order Confirmation</p>
           <p className={`font-heading text-4xl sm:text-6xl md:text-7xl font-black tracking-tight mb-2 leading-none ${isCancelled ? 'text-slate-300 line-through opacity-70' : ''}`} style={!isCancelled ? { color: brandingColor } : {}}>
-            {order.orderNumber}
+            {String(order.orderNumber || '').replace(/^POS-/, '')}
           </p>
 
           {isCancelled && (
@@ -500,7 +502,7 @@ export default function OrderConfirmation() {
               order.orderType === 'delivery' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
               }`}>
               {order.orderType === 'dine_in' ? <><Home className="w-4 h-4" /> Dine In</> :
-                order.orderType === 'delivery' ? <><Truck className="w-4 h-4" /> Delivery</> : <><ShoppingBag className="w-4 h-4" /> Take Out</>}
+                order.orderType === 'delivery' ? <><Truck className="w-4 h-4" /> Delivery</> : <><ShoppingBag className="w-4 h-4" /> Pick Up</>}
             </span>
             {isCancelled ? (
               <span className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-red-100 text-red-700 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-1.5 border border-red-200">
@@ -756,10 +758,10 @@ export default function OrderConfirmation() {
                 {formatCurrency(order.total)}
               </span>
             </div>
-            {hasOutstandingBalance && (
+            {isDownpayment && (
               <div className="mt-2 flex justify-between rounded-xl bg-pink-50 px-3 py-2 text-sm font-black text-primary-700">
-                <span>Balance Due</span>
-                <span>{formatCurrency(outstandingBalance)}</span>
+                <span>Payable Balance</span>
+                <span>{formatCurrency(payableBalance)}</span>
               </div>
             )}
           </div>

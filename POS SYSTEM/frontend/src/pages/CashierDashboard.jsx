@@ -1188,7 +1188,7 @@ export default function CashierDashboard() {
                     <div className="max-w-[55%] flex-shrink-0 text-right">
                       <div className="flex items-center gap-1 justify-end flex-wrap mb-1">
                         <span className={`badge text-[10px] sm:text-xs ${order.orderType === 'dine_in' ? 'bg-emerald-100 text-emerald-700' : order.orderType === 'delivery' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {order.orderType === 'dine_in' ? 'Dine In' : order.orderType === 'delivery' ? (order.status === 'on_the_way' ? 'Out for Delivery' : 'Delivery') : 'Take Out'}
+                          {order.orderType === 'dine_in' ? 'Dine In' : order.orderType === 'delivery' ? (order.status === 'on_the_way' ? 'Out for Delivery' : 'Delivery') : 'Pick Up'}
                         </span>
                         {order.paymentStatus === 'unpaid' && (
                           <span className="badge text-[10px] sm:text-xs bg-rose-100 text-rose-800 border border-rose-300 font-black animate-pulse">

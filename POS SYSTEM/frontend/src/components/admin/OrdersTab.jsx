@@ -19,7 +19,8 @@ export default function OrdersTab() {
   const getOrderTypeLabel = (orderType) => {
     const labels = {
       dine_in: 'Dine In',
-      take_out: 'Take Out',
+      take_out: 'Pick Up',
+      pickup: 'Pick Up',
       delivery: 'Delivery'
     };
 

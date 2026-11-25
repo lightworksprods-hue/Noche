@@ -33,7 +33,7 @@ export default function CashierMenuPOS({
   // Cart & Order Form State
   const [cartItems, setCartItems] = useState([]);
   const [customerName, setCustomerName] = useState('Walk-in Customer');
-  const [orderType, setOrderType] = useState('dine_in'); // 'dine_in' | 'take_out' | 'delivery'
+  const [orderType, setOrderType] = useState('dine_in'); // 'dine_in' | 'pickup' | 'delivery'
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryLat, setDeliveryLat] = useState(null);
   const [deliveryLng, setDeliveryLng] = useState(null);
@@ -710,14 +710,14 @@ export default function CashierMenuPOS({
               </button>
               <button
                 type="button"
-                onClick={() => setOrderType('take_out')}
+              onClick={() => setOrderType('pickup')}
                 className={`px-2 py-1 rounded-md font-black text-[11px] uppercase tracking-wider flex items-center gap-1 transition-all ${
-                  orderType === 'take_out' 
+                  orderType === 'pickup' 
                     ? 'bg-white text-surface-900 shadow-xs' 
                     : 'text-surface-600 hover:text-surface-900'
                 }`}
               >
-                <ShoppingBag className="w-3 h-3 text-amber-600" /> Take Out
+                <ShoppingBag className="w-3 h-3 text-amber-600" /> Pick Up
               </button>
               <button
                 type="button"

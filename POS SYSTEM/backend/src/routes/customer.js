@@ -43,10 +43,13 @@ router.get('/activity', authenticate, async (req, res) => {
         id: o.id,
         orderNumber: o.orderNumber,
         date: o.createdAt,
-        title: `Order #${o.orderNumber}`,
+        updatedAt: o.updatedAt,
+        title: `Order #${String(o.orderNumber).replace(/^POS-/, '')}`,
         description: o.items.map(i => i.productName).join(', '),
         total: o.total,
         status: o.status,
+        paymentStatus: o.paymentStatus,
+        paymentMode: o.paymentMode,
         items: o.items,
         hasRedemption: o.items.some(i => i.isRedemption)
       }))

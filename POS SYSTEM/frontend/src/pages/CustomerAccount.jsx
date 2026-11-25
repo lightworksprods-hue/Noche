@@ -15,6 +15,7 @@ export default function CustomerAccount() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyMeta, setHistoryMeta] = useState({ page: 1, total: 0, totalPages: 0 });
   const [historyStats, setHistoryStats] = useState({ totalOrders: 0 });
+  const [seenOrderUpdates, setSeenOrderUpdates] = useState({});
   const [loading, setLoading] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -46,7 +47,14 @@ export default function CustomerAccount() {
         loadActivity(historyPage); // Refresh activity timeline
       });
 
-      return cleanup;
+      const cleanupOrderUpdates = onEvent('order_update', (data) => {
+        if (data.order?.customerId === user.id) loadActivity(historyPage);
+      });
+
+      return () => {
+        cleanup?.();
+        cleanupOrderUpdates?.();
+      };
     }
   }, [user, connected, joinRoom, onEvent, refreshUser, historyPage]);
 
@@ -59,6 +67,15 @@ export default function CustomerAccount() {
         , params: { page, limit: 10 }
       });
       setActivity(res.data.data.timeline);
+      const timeline = res.data.data.timeline || [];
+      const seenKey = `customer_order_updates_seen_${user?.id}`;
+      const savedSeen = JSON.parse(localStorage.getItem(seenKey) || '{}');
+      const nextSeen = { ...savedSeen };
+      timeline.filter(item => item.type === 'order' && item.orderNumber).forEach(item => {
+        if (!nextSeen[item.orderNumber]) nextSeen[item.orderNumber] = item.updatedAt || item.date;
+      });
+      localStorage.setItem(seenKey, JSON.stringify(nextSeen));
+      setSeenOrderUpdates(nextSeen);
       setFavorites(res.data.data.favorites);
       setHistoryMeta(res.data.data.pagination || { page, total: 0, totalPages: 0 });
       setHistoryStats(res.data.data.stats || { totalOrders: 0 });
@@ -107,6 +124,33 @@ export default function CustomerAccount() {
       case 'preparing': return 'bg-sky-50 text-sky-600 border-sky-100';
       default: return 'bg-slate-50 text-slate-600 border-slate-100';
     }
+  };
+
+  const getStatusLabel = (status) => ({
+    pending: 'Order Received',
+    submitted: 'Payment Under Review',
+    booked: 'Booked',
+    confirmed: 'Confirmed',
+    preparing: 'Preparing',
+    ready: 'Ready for Pickup',
+    on_the_way: 'Out for Delivery',
+    completed: 'Completed',
+    cancelled: 'Cancelled'
+  }[status] || 'Order Updated');
+
+  const getPaymentLabel = (paymentStatus, paymentMode) => {
+    if (paymentStatus === 'paid') return 'Fully Paid';
+    if (paymentStatus === 'partially_paid') return 'Downpayment Paid';
+    if (paymentStatus === 'submitted') return paymentMode === 'full_payment' ? 'Full Payment Under Review' : 'Downpayment Under Review';
+    if (paymentStatus === 'rejected') return 'Payment Rejected';
+    return null;
+  };
+
+  const markOrderViewed = (item) => {
+    if (!user?.id || !item?.orderNumber) return;
+    const nextSeen = { ...seenOrderUpdates, [item.orderNumber]: item.updatedAt || item.date };
+    setSeenOrderUpdates(nextSeen);
+    localStorage.setItem(`customer_order_updates_seen_${user.id}`, JSON.stringify(nextSeen));
   };
 
   if (authLoading || loading) return null;
@@ -192,13 +236,35 @@ export default function CustomerAccount() {
                 item.type === 'milestone' ? 'bg-primary-500 ring-4 ring-primary-500/20' : 'bg-slate-300'
               }`}></div>
 
-              <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm hover:border-primary-500/30 transition-all">
+              <div className={`bg-white border rounded-[2rem] p-6 shadow-sm transition-all ${item.type === 'order' && item.updatedAt && new Date(item.updatedAt).getTime() > new Date(seenOrderUpdates[item.orderNumber] || 0).getTime() ? 'border-primary-400 ring-2 ring-primary-100' : 'border-slate-200 hover:border-primary-500/30'}`}>
                 <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-sm font-black text-slate-900 tracking-tight">{item.title}</h4>
+                  {item.type === 'order' ? (
+                    <Link to={`/order/${item.orderNumber}`} onClick={() => markOrderViewed(item)} className="text-sm font-black text-slate-900 tracking-tight hover:text-primary-600">
+                      {item.title}
+                    </Link>
+                  ) : <h4 className="text-sm font-black text-slate-900 tracking-tight">{item.title}</h4>}
                   <span className="text-[10px] font-bold text-slate-400 uppercase">{formatDate(item.date)}</span>
                 </div>
                 
                 <p className="text-xs text-slate-500 leading-relaxed mb-4">{item.description}</p>
+
+                {item.type === 'order' && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${getStatusColor(item.status)}`}>
+                      {getStatusLabel(item.status)}
+                    </span>
+                    {getPaymentLabel(item.paymentStatus, item.paymentMode) && (
+                      <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${item.paymentStatus === 'rejected' ? 'border-red-100 bg-red-50 text-red-600' : item.paymentStatus === 'paid' ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-blue-100 bg-blue-50 text-blue-700'}`}>
+                        {getPaymentLabel(item.paymentStatus, item.paymentMode)}
+                      </span>
+                    )}
+                    {item.updatedAt && new Date(item.updatedAt).getTime() > new Date(seenOrderUpdates[item.orderNumber] || 0).getTime() && (
+                      <span className="rounded-full bg-primary-500 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white animate-pulse">
+                        New update
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {item.type === 'order' && (
                   <div className="flex items-center justify-between pt-4 border-t border-slate-50">

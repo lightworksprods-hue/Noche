@@ -705,7 +705,7 @@ function OrderCard({ order, now, onAction, processing }) {
         <div>
           <span className={`font-heading font-black text-xl ${isUrgent ? 'text-red-400' : 'text-white'}`}>{order.orderNumber}</span>
           <span className="ml-2 text-xs inline-flex items-center gap-1.5 text-surface-400">
-            {order.orderType === 'dine_in' ? <><UtensilsCrossed className="w-3 h-3" /> Dine In</> : order.orderType === 'delivery' ? <><MapPin className="w-3 h-3 text-blue-400" /> Delivery</> : <><PackageOpen className="w-3 h-3" /> Take Out</>}
+            {order.orderType === 'dine_in' ? <><UtensilsCrossed className="w-3 h-3" /> Dine In</> : order.orderType === 'delivery' ? <><MapPin className="w-3 h-3 text-blue-400" /> Delivery</> : <><PackageOpen className="w-3 h-3" /> Pick Up</>}
             {order.paymentMethod === 'points' && (
               <span className="ml-2 text-purple-400 font-bold flex items-center gap-1"><Gift className="w-3 h-3" /> REWARD</span>
             )}

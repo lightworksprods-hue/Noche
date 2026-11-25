@@ -1,4 +1,27 @@
 const axios = require('axios');
+const nodemailer = require('nodemailer');
+
+// Brevo API keys (xkeysib...) are for the HTTP API. SMTP keys (xsmtpsib...)
+// must be sent through Brevo's SMTP relay instead.
+const sendBrevoEmail = async ({ sender, to, subject, htmlContent }) => {
+  if (process.env.BREVO_API_KEY) {
+    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+      sender, to, subject, htmlContent
+    }, {
+      headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' }
+    });
+    return response;
+  }
+
+  if (!process.env.EMAIL_PASS) throw new Error('Brevo email credentials are not configured.');
+  const transporter = nodemailer.createTransport({
+    host: 'smtp-relay.brevo.com',
+    port: 587,
+    secure: false,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+  });
+  return transporter.sendMail({ from: `${sender.name} <${sender.email}>`, to, subject, html: htmlContent });
+};
 
 const sendOTPEmail = async (email, otp, tenant = {}) => {
   const { name = "Mona's Pang Noche Buena", logo, primaryColor = '#ec4899' } = tenant;
@@ -19,7 +42,7 @@ const sendOTPEmail = async (email, otp, tenant = {}) => {
   console.log('--- SENDING PREMIUM EMAIL ---');
   
   try {
-    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+    const response = await sendBrevoEmail({
       sender: { 
         name: name, 
         email: process.env.EMAIL_USER || 'jasonanthonytrillo@gmail.com'
@@ -121,15 +144,10 @@ const sendOTPEmail = async (email, otp, tenant = {}) => {
         </body>
         </html>
       `
-    }, {
-      headers: {
-        'api-key': process.env.EMAIL_PASS,
-        'Content-Type': 'application/json'
-      }
     });
 
-    console.log('✅ Premium Email Success:', response.data);
-    return response.data;
+    console.log('✅ Premium Email Success:', response?.messageId || response?.messageIds || 'accepted');
+    return response;
   } catch (error) {
     console.error('❌ Brevo API Failure:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to send verification email.');
@@ -152,7 +170,7 @@ const sendBookedOrderEmail = async (order, tenant = {}) => {
   let absoluteLogo = logo;
   if (logo && logo.startsWith('/')) absoluteLogo = `https://hometownbrew.jasonanthonytrillo.workers.dev${logo}`;
 
-  const orderType = order.orderType === 'delivery' ? 'Delivery' : order.orderType === 'take_out' ? 'Take Out' : 'Dine In';
+  const orderType = order.orderType === 'delivery' ? 'Delivery' : ['take_out', 'pickup'].includes(order.orderType) ? 'Pick Up' : 'Dine In';
   const paymentStatus = order.paymentStatus === 'paid' ? 'Paid' : order.paymentStatus === 'partially_paid' ? 'Partially paid' : 'Payment pending';
   const itemsHtml = (order.items || []).map(item => `
     <tr>
@@ -177,7 +195,7 @@ const sendBookedOrderEmail = async (order, tenant = {}) => {
     : `<div style="margin-top:18px;padding:14px 16px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:13px;"><strong>${orderType} order</strong><br>Please bring your order number when claiming your order.</div>`;
 
   try {
-    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+    const response = await sendBrevoEmail({
       sender: { name, email: process.env.EMAIL_USER || 'jasonanthonytrillo@gmail.com' },
       to: [{ email: order.customerEmail, name: order.customerName || undefined }],
       subject: `Order #${order.orderNumber} is booked — ${name}`,
@@ -186,9 +204,9 @@ const sendBookedOrderEmail = async (order, tenant = {}) => {
           body{margin:0;padding:28px 0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a}.wrap{max-width:600px;margin:0 auto;padding:0 16px}.card{overflow:hidden;background:#fff;border:1px solid #e2e8f0;border-radius:24px;box-shadow:0 18px 45px -20px rgba(15,23,42,.35)}
           .hero{padding:34px 28px;background:linear-gradient(145deg,${primaryColor} 0%,#111827 145%);color:#fff;text-align:center}.hero h1{margin:20px 0 8px;font-size:27px;letter-spacing:-.5px}.hero p{margin:0;color:rgba(255,255,255,.78);font-size:13px}.body{padding:30px 28px}.hello{font-size:19px;font-weight:800;margin:0 0 8px}.muted{color:#64748b;font-size:14px;line-height:1.6}.number{display:inline-block;margin:18px 0 6px;padding:10px 16px;border-radius:10px;background:${primaryColor};color:#fff;font-size:18px;font-weight:900;letter-spacing:.5px}.summary{margin-top:24px;padding:18px;border:1px solid #e2e8f0;border-radius:16px;background:#fff}.summary h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:#64748b}.total td{padding-top:16px;font-size:16px;font-weight:900;border-bottom:0}.footer{padding:0 28px 28px;text-align:center;color:#94a3b8;font-size:12px;line-height:1.5}@media(max-width:480px){.body,.hero{padding-left:20px;padding-right:20px}.footer{padding-left:20px;padding-right:20px}}
         </style></head><body><div class="wrap"><div class="card"><div class="hero">${logoHtml}<h1>Order booked</h1><p>We’ve received and confirmed your order.</p></div><div class="body"><p class="hello">Hi ${escapeHtml(order.customerName || 'there')}!</p><p class="muted">Your order is now booked. Keep this email for your records and show the order number when you claim it.</p><div style="text-align:center"><span class="number">#${escapeHtml(order.orderNumber)}</span></div><table width="100%" cellspacing="0" cellpadding="0" style="margin-top:14px"><tr><td class="muted">Order type</td><td align="right"><strong>${orderType}</strong></td></tr><tr><td class="muted" style="padding-top:8px">Payment</td><td align="right" style="padding-top:8px"><strong>${paymentStatus}</strong></td></tr></table>${deliveryDetails}<div class="summary"><h2>Order details</h2><table width="100%" cellspacing="0" cellpadding="0">${itemsHtml}<tr class="total"><td>Total</td><td align="right">${formatPeso(order.total)}</td></tr></table></div></div><div class="footer">Questions about your order? Please contact the store and mention <strong>#${escapeHtml(order.orderNumber)}</strong>.<br><br>${escapeHtml(name)} &copy; ${new Date().getFullYear()}</div></div></div></body></html>`
-    }, { headers: { 'api-key': process.env.EMAIL_PASS, 'Content-Type': 'application/json' } });
-    console.log('✅ Booked order email sent:', response.data?.messageId || order.orderNumber);
-    return response.data;
+    });
+    console.log('✅ Booked order email sent:', response?.messageId || order.orderNumber);
+    return response;
   } catch (error) {
     console.error('❌ Booked order email failure:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to send booked order email.');
