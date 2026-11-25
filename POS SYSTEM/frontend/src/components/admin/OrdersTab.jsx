@@ -178,7 +178,7 @@ export default function OrdersTab() {
 
       {confirmCancel && (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in sm:items-center"
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in"
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-order-title"
