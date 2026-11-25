@@ -75,6 +75,7 @@ export default function OrdersTab() {
   };
 
   const [confirmDelete, setConfirmDelete] = useState(null); // Stores { id, orderNumber } when modal is open
+  const [confirmCancel, setConfirmCancel] = useState(null);
   const [paymentMessage, setPaymentMessage] = useState(null);
 
   const handleHardDelete = async () => {
@@ -104,7 +105,13 @@ export default function OrdersTab() {
   };
 
   const handleCancelOrder = async (order) => {
-    if (!window.confirm(`Cancel order #${order.orderNumber}?`)) return;
+    setConfirmCancel({ id: order.id, orderNumber: order.orderNumber });
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!confirmCancel) return;
+    const order = confirmCancel;
+    setConfirmCancel(null);
     await handleStatusChange(order, 'cancelled');
   };
 
@@ -163,6 +170,49 @@ export default function OrdersTab() {
                 className="flex-1 px-6 py-4 rounded-2xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
               >
                 Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmCancel && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-order-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-primary-100 bg-white shadow-2xl animate-scale-in">
+            <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-6 pb-7 pt-6 text-white">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25">
+                <XCircle className="h-7 w-7" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">Order action</p>
+              <h3 id="cancel-order-title" className="mt-1 font-heading text-2xl font-black">Cancel this order?</h3>
+            </div>
+            <div className="p-6">
+              <p className="leading-relaxed text-surface-600">
+                Are you sure you want to cancel <span className="font-black text-surface-900">Order #{confirmCancel.orderNumber}</span>?
+              </p>
+              <p className="mt-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm font-medium text-primary-800">
+                The order will move to the cancelled list and its refund status will require an admin decision.
+              </p>
+            </div>
+            <div className="flex gap-3 border-t border-surface-100 bg-surface-50 p-6">
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(null)}
+                className="flex-1 rounded-xl border border-surface-200 bg-white px-4 py-3 text-sm font-black text-surface-600 transition hover:bg-surface-100"
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancel}
+                className="flex-1 rounded-xl bg-primary-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 active:scale-95"
+              >
+                Confirm Cancel
               </button>
             </div>
           </div>
