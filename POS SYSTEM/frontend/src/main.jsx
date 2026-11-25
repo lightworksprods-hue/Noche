@@ -14,11 +14,23 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 
 // PWA Service Worker Registration
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then(reg => console.log('🚀 PWA: Service Worker Registered!', reg.scope))
       .catch(err => console.log('❌ PWA: Registration Failed!', err));
+  });
+}
+
+// Remove any old localhost service worker/cache left by previous development runs.
+if ('serviceWorker' in navigator && import.meta.env.DEV) {
+  window.addEventListener('load', async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map(reg => reg.unregister()));
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
+    }
   });
 }
 
