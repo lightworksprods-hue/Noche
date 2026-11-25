@@ -405,7 +405,8 @@ router.post('/orders/:id/cancel', authenticate, authorize('cashier', 'admin'), a
       where: { id: orderId, tenantId: req.tenantId },
       data: {
         status: 'cancelled',
-        paymentStatus: order.paymentStatus === 'paid' ? 'refunded' : 'unpaid',
+        paymentStatus: order.paymentStatus === 'refunded' ? 'refunded' : order.paymentStatus,
+        refundStatus: ['paid', 'partially_paid'].includes(order.paymentStatus) ? 'pending' : 'not_required',
         cancellationReason: reason || 'Cancelled by cashier'
       },
       include: { items: true }

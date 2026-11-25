@@ -274,6 +274,7 @@ router.patch('/orders/:id/status', authenticate, authorize('admin'), async (req,
       where: { id: orderId },
       data: {
         status,
+        ...(status === 'cancelled' && { refundStatus: ['paid', 'partially_paid'].includes(order.paymentStatus) ? 'pending' : 'not_required' }),
         ...(status === 'preparing' && { confirmedAt: order.confirmedAt || new Date(), kitchenStartedAt: order.kitchenStartedAt || new Date() }),
         ...(status === 'ready' && { kitchenCompletedAt: new Date() }),
       },
@@ -296,6 +297,49 @@ router.patch('/orders/:id/status', authenticate, authorize('admin'), async (req,
   } catch (error) {
     console.error('Admin order status error:', error);
     res.status(500).json({ success: false, message: 'Failed to update order status.' });
+  }
+});
+
+// PATCH /api/admin/orders/:id/refund — Record the refund decision for a cancelled order.
+router.patch('/orders/:id/refund', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const { refundStatus } = req.body;
+    if (!['refunded', 'not_refunded'].includes(refundStatus)) {
+      return res.status(400).json({ success: false, message: 'Invalid refund decision.' });
+    }
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: req.tenantId } });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    if (order.status !== 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Only cancelled orders can have a refund decision.' });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        refundStatus,
+        ...(refundStatus === 'refunded' ? { paymentStatus: 'refunded' } : {})
+      },
+      include: { items: true, payments: true }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        action: `order_${refundStatus}`,
+        entityType: 'order',
+        entityId: order.orderNumber,
+        details: `Admin marked Order #${order.orderNumber} as ${refundStatus.replace('_', ' ')}.`
+      }
+    });
+
+    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, 'refund_updated');
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Admin order refund error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update refund status.' });
   }
 });
 

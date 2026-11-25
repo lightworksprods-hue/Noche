@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment } from '../../services/api';
+import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment, updateAdminOrderRefund } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import { AlertTriangle, CheckCircle, CircleAlert, MoreVertical, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, CircleAlert, MoreVertical, Trash2, XCircle } from 'lucide-react';
 import PaginationControls from './PaginationControls';
 import { useSocket } from '../../context/SocketContext';
 
@@ -100,6 +100,21 @@ export default function OrdersTab() {
     } catch (error) {
       console.error(error);
       alert(error.response?.data?.message || 'Failed to update order status.');
+    }
+  };
+
+  const handleCancelOrder = async (order) => {
+    if (!window.confirm(`Cancel order #${order.orderNumber}?`)) return;
+    await handleStatusChange(order, 'cancelled');
+  };
+
+  const handleRefundDecision = async (order, refundStatus) => {
+    try {
+      await updateAdminOrderRefund(order.id, refundStatus);
+      await loadOrders();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || 'Failed to update refund status.');
     }
   };
 
@@ -295,6 +310,14 @@ export default function OrdersTab() {
                             {order.orderType === 'delivery' ? 'Ready for Delivery' : 'Ready for Pickup'}
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleCancelOrder(order)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-red-600 shadow-sm transition hover:bg-red-100"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          Cancel Order
+                        </button>
                         <select
                           value={order.status}
                           onChange={e => handleStatusChange(order, e.target.value)}
@@ -309,6 +332,24 @@ export default function OrdersTab() {
                           <option value="completed">Completed</option>
                           <option value="cancelled">Cancelled</option>
                         </select>
+                      </div>
+                    )}
+                    {order.status === 'cancelled' && (
+                      <div className="mb-2 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRefundDecision(order, 'refunded')}
+                          className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${order.refundStatus === 'refunded' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                        >
+                          Refunded
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRefundDecision(order, 'not_refunded')}
+                          className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${order.refundStatus === 'not_refunded' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        >
+                          Not Refunded
+                        </button>
                       </div>
                     )}
                     {order.status === 'cancelled' && (
@@ -417,6 +458,39 @@ export default function OrdersTab() {
                   <CheckCircle className="h-4 w-4" />
                   {order.orderType === 'delivery' ? 'Mark Ready for Delivery' : 'Mark Ready for Pickup'}
                 </button>
+              )}
+              {order.status !== 'cancelled' && order.status !== 'completed' && (
+                <button
+                  type="button"
+                  onClick={() => handleCancelOrder(order)}
+                  className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 py-3 text-xs font-black uppercase tracking-wide text-red-600 transition hover:bg-red-100"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Cancel Order
+                </button>
+              )}
+              {order.status === 'cancelled' && (
+                <div className="col-span-2 rounded-xl border border-red-100 bg-red-50/60 p-3">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-red-500">
+                    Refund: {order.refundStatus === 'refunded' ? 'Refunded' : order.refundStatus === 'not_refunded' || order.refundStatus === 'not_required' ? 'Not Refunded' : 'Pending Admin Decision'}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleRefundDecision(order, 'refunded')}
+                      className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase ${order.refundStatus === 'refunded' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
+                    >
+                      Refunded
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRefundDecision(order, 'not_refunded')}
+                      className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase ${order.refundStatus === 'not_refunded' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      Not Refunded
+                    </button>
+                  </div>
+                </div>
               )}
               {order.status === 'cancelled' && (
                 <div className="flex items-end justify-end">

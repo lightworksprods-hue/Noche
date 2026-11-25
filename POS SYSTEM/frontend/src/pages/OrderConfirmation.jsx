@@ -464,7 +464,11 @@ export default function OrderConfirmation() {
                 <h4 className="font-bold text-red-800 text-sm">Order Cancelled</h4>
                 <p className="text-xs text-red-600 font-medium leading-relaxed">
                   This transaction was cancelled by the store. {order.cancellationReason && `Reason: ${order.cancellationReason}. `}
-                  If any payments were made, they have been voided. Please proceed to the counter for questions or refunds.
+                  {order.refundStatus === 'refunded'
+                    ? 'Your refund has been recorded as completed.'
+                    : order.refundStatus === 'not_refunded' || order.refundStatus === 'not_required'
+                      ? 'No refund has been recorded for this order.'
+                      : 'Any refund is pending admin confirmation. Please proceed to the counter for assistance.'}
                 </p>
               </div>
             </div>

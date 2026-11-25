@@ -7,14 +7,22 @@ import { hexToRgb } from './helpers';
 export function applyTheme(primaryColor) {
   if (!primaryColor) return;
   
-  if (!hexToRgb(primaryColor)) return;
+  const rgb = hexToRgb(primaryColor);
+  if (!rgb) return;
 
-  // Keep the brand pink-led while preserving lighter and darker tones for
-  // readable backgrounds, borders, text, and buttons throughout the UI.
+  const [red, green, blue] = rgb.split(',').map(Number);
+  const mix = (amount, target) => [red, green, blue]
+    .map(channel => Math.round(channel + (target - channel) * amount))
+    .join(', ');
+  const darken = amount => [red, green, blue]
+    .map(channel => Math.round(channel * (1 - amount)))
+    .join(', ');
+
+  // Generate readable tints and shades from the configured tenant brand color.
   const palette = {
-    50: '253, 242, 248', 100: '252, 231, 243', 200: '251, 207, 232',
-    300: '249, 168, 212', 400: '244, 114, 182', 500: '236, 72, 153',
-    600: '219, 39, 119', 700: '190, 24, 93', 800: '157, 23, 77', 900: '131, 24, 67'
+    50: mix(0.95, 255), 100: mix(0.9, 255), 200: mix(0.75, 255),
+    300: mix(0.55, 255), 400: mix(0.25, 255), 500: `${red}, ${green}, ${blue}`,
+    600: darken(0.1), 700: darken(0.2), 800: darken(0.3), 900: darken(0.4)
   };
 
   // 1. Create or update a style tag for absolute priority override

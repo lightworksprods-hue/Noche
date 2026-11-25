@@ -119,6 +119,7 @@ export const getAdminOrders = (status, page, search = '') => {
 };
 export const updateAdminOrderStatus = (id, status) => api.patch(`/admin/orders/${id}/status`, { status });
 export const updateAdminOrderPayment = (id, paymentStatus, paymentMethod, paymentReference) => api.patch(`/admin/orders/${id}/payment`, { paymentStatus, paymentMethod, paymentReference });
+export const updateAdminOrderRefund = (id, refundStatus) => api.patch(`/admin/orders/${id}/refund`, { refundStatus });
 export const getAdminProducts = () => api.get('/admin/products');
 export const createProduct = (data) => api.post('/admin/products', data);
 export const updateProduct = (id, data) => api.put(`/admin/products/${id}`, data);

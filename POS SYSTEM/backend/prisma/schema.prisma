@@ -198,6 +198,7 @@ model Order {
   paymentMethod      String    @default("cash") // cash, gcash, maya, card, points
   paymentMode        String    @default("downpayment") // downpayment, full_payment
   paymentStatus      String    @default("unpaid") // unpaid, paid, refunded
+  refundStatus       String    @default("not_required") // not_required, pending, refunded, not_refunded
   subtotal           Float     @default(0)
   discountType       String? // senior, pwd, promo
   discountAmount     Float     @default(0)
