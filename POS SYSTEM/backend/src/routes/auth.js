@@ -6,7 +6,10 @@ const crypto = require('crypto');
 const { authenticate, authorize } = require('../middleware/auth');
 const prisma = require('../lib/prisma');
 const { OAuth2Client } = require('google-auth-library');
-const GOOGLE_CLIENT_ID = '542194625185-rd9qq05qqgej9n6qkhlgcdgfagid601l.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+if (!GOOGLE_CLIENT_ID) {
+  console.warn('Google OAuth is not configured. Add GOOGLE_CLIENT_ID to the backend environment.');
+}
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const { sendOTPEmail } = require('../lib/mailer');
 const rateLimit = require('../middleware/rateLimiter');
