@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import { AlertTriangle, MoreVertical, Trash2 } from 'lucide-react';
+import { AlertTriangle, CircleAlert, MoreVertical, Trash2 } from 'lucide-react';
 import PaginationControls from './PaginationControls';
 import { useSocket } from '../../context/SocketContext';
 
@@ -74,6 +74,7 @@ export default function OrdersTab() {
   };
 
   const [confirmDelete, setConfirmDelete] = useState(null); // Stores { id, orderNumber } when modal is open
+  const [paymentMessage, setPaymentMessage] = useState(null);
 
   const handleHardDelete = async () => {
     if (!confirmDelete) return;
@@ -107,7 +108,10 @@ export default function OrdersTab() {
       await loadOrders();
     } catch (error) {
       console.error(error);
-      alert(error.response?.data?.message || 'Failed to update payment status.');
+      setPaymentMessage({
+        title: 'Payment not ready',
+        message: error.response?.data?.message || 'This payment could not be updated right now.',
+      });
     }
   };
 
@@ -140,6 +144,40 @@ export default function OrdersTab() {
                 className="flex-1 px-6 py-4 rounded-2xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
               >
                 Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paymentMessage && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-surface-950/45 p-4 backdrop-blur-sm animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="payment-message-title"
+        >
+          <div className="w-full max-w-sm overflow-hidden rounded-[2rem] border border-pink-100 bg-white shadow-2xl animate-scale-in">
+            <div className="bg-gradient-to-br from-pink-500 to-fuchsia-600 px-6 pb-7 pt-6 text-white">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 ring-1 ring-white/30">
+                <CircleAlert className="h-7 w-7" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-100">Payment verification</p>
+              <h3 id="payment-message-title" className="mt-1 font-heading text-2xl font-black">
+                {paymentMessage.title}
+              </h3>
+            </div>
+            <div className="p-6">
+              <p className="leading-relaxed text-surface-600">{paymentMessage.message}</p>
+              <p className="mt-3 text-sm font-medium text-surface-400">
+                Ask the customer to submit the payment reference before confirming the order.
+              </p>
+              <button
+                type="button"
+                onClick={() => setPaymentMessage(null)}
+                className="mt-6 w-full rounded-2xl bg-primary-600 px-5 py-3.5 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700"
+              >
+                Got it
               </button>
             </div>
           </div>
@@ -179,6 +217,7 @@ export default function OrdersTab() {
                 <th className="p-4">Order #</th>
                 <th className="p-4">Date</th>
                 <th className="p-4">Customer</th>
+                <th className="p-4">Ordered Items</th>
                 <th className="p-4">Total</th>
                 <th className="p-4 text-center">Status</th>
                 <th className="p-4">Payment</th>
@@ -197,6 +236,15 @@ export default function OrdersTab() {
                     {order.customerPhone && <div className="text-[11px] text-surface-500">{order.customerPhone}</div>}
                     {order.customerEmail && <div className="text-[11px] text-surface-500 truncate max-w-[180px]">{order.customerEmail}</div>}
                     <div className="text-[10px] text-surface-400 uppercase font-black">{getOrderTypeLabel(order.orderType)}</div>
+                  </td>
+                  <td className="p-4 min-w-[190px]">
+                    <div className="space-y-1">
+                      {(order.items || []).map(item => (
+                        <div key={item.id} className="text-xs text-surface-700">
+                          <span className="font-black">{item.quantity}×</span> {item.productName}
+                        </div>
+                      ))}
+                    </div>
                   </td>
                   <td className="p-4 font-black text-surface-900">{formatCurrency(order.total)}</td>
                   <td className="p-4 text-center">
@@ -259,7 +307,7 @@ export default function OrdersTab() {
                 </tr>
               ))}
               {orders.length === 0 && (
-                <tr><td colSpan="7" className="p-12 text-center text-surface-400">No orders found for this filter.</td></tr>
+                <tr><td colSpan="8" className="p-12 text-center text-surface-400">No orders found for this filter.</td></tr>
               )}
             </tbody>
           </table>
@@ -292,6 +340,17 @@ export default function OrdersTab() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Total</p>
                 <p className="font-black text-surface-900">{formatCurrency(order.total)}</p>
+              </div>
+              <div className="col-span-2 border-t border-surface-100 pt-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2">Ordered Items</p>
+                <div className="space-y-1.5">
+                  {(order.items || []).map(item => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 text-sm text-surface-700">
+                      <span><span className="font-black text-surface-900">{item.quantity}×</span> {item.productName}</span>
+                      <span className="flex-shrink-0 font-bold text-surface-900">{formatCurrency(item.subtotal)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Payment</p>

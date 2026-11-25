@@ -612,7 +612,7 @@ router.get('/notifications', authenticate, authorize('admin'), async (req, res) 
     const recentDevice = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const promoEndingSoon = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-    const [lowStockProducts, staffShifts, devices, feedback, promos, bookings] = await Promise.all([
+    const [lowStockProducts, staffShifts, devices, feedback, promos, bookings, orderNotifications] = await Promise.all([
       prisma.product.findMany({
         where: { tenantId: req.tenantId, available: true, stock: { lte: 10 } },
         select: { id: true, name: true, stock: true, updatedAt: true },
@@ -653,6 +653,16 @@ router.get('/notifications', authenticate, authorize('admin'), async (req, res) 
       prisma.eventBooking.findMany({
         where: { tenantId: req.tenantId, status: 'pending' },
         select: { id: true, customerName: true, paymentStatus: true, paymentReference: true, package: { select: { name: true } }, eventDate: true, createdAt: true, paymentSubmittedAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 50
+      }),
+      prisma.notification.findMany({
+        where: {
+          type: 'order_placed',
+          order: { tenantId: req.tenantId },
+          createdAt: { gte: recentStaffActivity }
+        },
+        include: { order: { select: { orderNumber: true, customerName: true } } },
         orderBy: { createdAt: 'desc' },
         take: 50
       })
@@ -724,6 +734,16 @@ router.get('/notifications', authenticate, authorize('admin'), async (req, res) 
           : `${booking.customerName} requested ${booking.package.name} for ${booking.eventDate.toLocaleDateString()}.`,
         tab: 'bookings',
         timestamp: booking.createdAt
+      })),
+      ...orderNotifications.map(notification => ({
+        id: `order-${notification.id}`,
+        type: 'order_placed',
+        title: 'New order received',
+        message: notification.order
+          ? `Order #${notification.order.orderNumber} from ${notification.order.customerName || 'a customer'}.`
+          : notification.message,
+        tab: 'orders',
+        timestamp: notification.createdAt
       }))
     ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 

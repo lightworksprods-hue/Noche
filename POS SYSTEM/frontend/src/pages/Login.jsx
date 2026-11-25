@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { login, requestOTP, resetPassword, getPublicTenant } from '../services/api';
+import { login, getPublicTenant } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { unlockAudio } from '../utils/helpers';
 import { applyTheme } from '../utils/theme';
@@ -19,17 +19,6 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const { loginUser } = useAuth();
   const navigate = useNavigate();
-
-  // Forgot password states
-  const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [forgotStep, setForgotStep] = useState(1);
-  const [forgotLoading, setForgotLoading] = useState(false);
-  const [forgotError, setForgotError] = useState('');
-  const [forgotSuccess, setForgotSuccess] = useState('');
 
   const tenantSlug = searchParams.get('tenant') || 'project-million';
   const [branding, setBranding] = useState(null);
@@ -120,63 +109,6 @@ export default function Login() {
     } finally { setLoading(false); }
   };
 
-  const handleRequestOTP = async (e) => {
-    e.preventDefault();
-    if (!forgotEmail.trim()) return;
-    setForgotLoading(true);
-    setForgotError('');
-    setForgotSuccess('');
-    try {
-      await requestOTP({ email: forgotEmail.trim(), tenantSlug });
-      setForgotStep(2);
-      setForgotSuccess('A 6-digit security code has been sent to your email.');
-    } catch (err) {
-      setForgotError(err.response?.data?.message || 'Failed to send security code.');
-    } finally {
-      setForgotLoading(false);
-    }
-  };
-
-  const handleResetPasswordSubmit = async (e) => {
-    e.preventDefault();
-    if (!otpCode || !newPassword || !confirmNewPassword) return;
-    if (newPassword !== confirmNewPassword) {
-      setForgotError('New passwords do not match.');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setForgotError('Password must be at least 6 characters.');
-      return;
-    }
-
-    setForgotLoading(true);
-    setForgotError('');
-    setForgotSuccess('');
-    try {
-      await resetPassword({
-        email: forgotEmail.trim(),
-        otp: otpCode,
-        newPassword,
-        tenantSlug
-      });
-      setForgotSuccess('Your password has been successfully reset! You can now log in.');
-      setTimeout(() => {
-        setShowForgotModal(false);
-        // Reset states
-        setForgotEmail('');
-        setOtpCode('');
-        setNewPassword('');
-        setConfirmNewPassword('');
-        setForgotStep(1);
-        setForgotSuccess('');
-      }, 3000);
-    } catch (err) {
-      setForgotError(err.response?.data?.message || 'Failed to reset password.');
-    } finally {
-      setForgotLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#831843] via-[#be185d] to-[#500724] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -232,20 +164,6 @@ export default function Login() {
             </button>
           </div>
 
-          <div className="flex justify-end text-xs pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                setShowForgotModal(true);
-                setForgotEmail(email);
-              }}
-              className="hover:underline transition-colors font-semibold"
-              style={{ color: 'rgba(255,255,255,0.7)' }}
-            >
-              Forgot Password?
-            </button>
-          </div>
-
           <button type="submit" disabled={loading || lockoutSeconds > 0 || (showCaptcha && turnstileSiteKey && !captchaToken)} className="w-full py-3.5 rounded-xl text-white font-bold transition-all transform active:scale-[0.98] shadow-lg" style={{ backgroundColor: brandingColor }}>
             {loading ? 'Signing in...' : lockoutSeconds > 0 ? `Try again in ${lockoutSeconds}s` : 'Sign In'}
           </button>
@@ -262,7 +180,7 @@ export default function Login() {
       </div>
 
       {/* Forgot Password Modal */}
-      {showForgotModal && (
+      {false && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
           <div className="bg-surface-800 border border-surface-700 w-full max-w-md rounded-3xl p-8 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">

@@ -447,9 +447,9 @@ export default function OrderConfirmation() {
             </div>
           )}
 
-          <p className="text-[10px] sm:text-xs md:text-sm font-bold text-slate-400 uppercase tracking-[0.15em] mb-3 sm:mb-4">Your Queue Number</p>
-          <p className={`font-heading text-6xl sm:text-8xl md:text-9xl font-black tracking-tighter mb-2 leading-none ${isCancelled ? 'text-slate-300 line-through opacity-70' : 'text-slate-900'}`}>
-            {order.orderNumber.includes('-') ? order.orderNumber.split('-')[1] : order.orderNumber}
+          <p className="text-[10px] sm:text-xs md:text-sm font-bold uppercase tracking-[0.15em] mb-3 sm:mb-4" style={{ color: brandingColor }}>Order Confirmation</p>
+          <p className={`font-heading text-4xl sm:text-6xl md:text-7xl font-black tracking-tight mb-2 leading-none ${isCancelled ? 'text-slate-300 line-through opacity-70' : ''}`} style={!isCancelled ? { color: brandingColor } : {}}>
+            {order.orderNumber}
           </p>
 
           {isCancelled && (
@@ -566,51 +566,27 @@ export default function OrderConfirmation() {
           </div>
         )}
 
-        {!order.customerId && !isCancelled && !isCompleted && !isReady && showInviteBanner && !branding?.saRewardsDisabled && (
-          <div className="bg-slate-900 rounded-[2rem] p-6 mb-6 text-white shadow-2xl relative overflow-hidden group border border-white/5 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/20 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-primary-500/30 transition-all duration-500"></div>
-            <div className="relative z-10 flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
-              <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md border border-white/20"><Bean className="w-6 h-6 text-amber-300" /></div>
-              <div className="flex-1">
-                <h4 className="text-lg font-black text-white mb-1 tracking-tight">Save this meal to your story!</h4>
-                <p className="text-slate-300 text-[11px] leading-relaxed mb-4">Sign up now to start your Personal Timeline and earn <span className="text-amber-400 font-black">{Math.floor(order.total / (branding?.points_rate || 100))} points</span> on this order.</p>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                  <Link to={tenantSlug ? `/member-portal?tenant=${tenantSlug}&action=register` : '/member-portal?action=register'} className="inline-block px-8 py-3 bg-white text-slate-900 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-primary-50 transition-all shadow-xl active:scale-95">
-                    Create My VIP Account
-                  </Link>
-                  <button
-                    onClick={() => setShowInviteBanner(false)}
-                    className="inline-block px-8 py-3 bg-slate-800 text-slate-350 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-700 hover:text-white transition-all active:scale-95"
-                  >
-                    Maybe Later
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* PWA Install App Banner */}
         {!isCancelled && !isCompleted && showInstallBanner && (
-          <div className="bg-slate-900 rounded-[2rem] p-6 mb-6 text-white shadow-2xl relative overflow-hidden group border border-white/5 animate-fade-in-up" style={{ animationDelay: '0.13s' }}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-indigo-500/30 transition-all duration-500"></div>
+          <div className="bg-primary-50 rounded-[2rem] p-6 mb-6 text-surface-900 shadow-lg relative overflow-hidden group border border-primary-100 animate-fade-in-up" style={{ animationDelay: '0.13s' }}>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary-300/20 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-primary-300/30 transition-all duration-500"></div>
             <div className="relative z-10 flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
               <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md border border-white/20 shrink-0">
                 <Smartphone className="w-7 h-7 text-indigo-300" />
               </div>
               <div className="flex-1">
-                <h4 className="text-lg font-black text-white mb-1 tracking-tight">Install the App</h4>
-                <p className="text-slate-300 text-[11px] leading-relaxed mb-4">Install our app to your home screen for quick access and instant order tracking!</p>
+                <h4 className="text-lg font-black text-surface-900 mb-1 tracking-tight">Install the App</h4>
+                <p className="text-surface-500 text-[11px] leading-relaxed mb-4">Install our app to your home screen for quick access and instant order tracking!</p>
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
                   <button
                     onClick={handleInstallApp}
-                    className="inline-block px-8 py-3 bg-white text-slate-900 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-all shadow-xl active:scale-95"
+                    className="inline-block px-8 py-3 bg-white text-surface-900 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-primary-100 transition-all shadow-xl active:scale-95"
                   >
                     Install Now
                   </button>
                   <button
                     onClick={() => setShowInstallBanner(false)}
-                    className="inline-block px-8 py-3 bg-slate-800 text-slate-350 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-700 hover:text-white transition-all active:scale-95"
+                    className="inline-block px-8 py-3 bg-surface-100 text-surface-700 text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-surface-200 transition-all active:scale-95"
                   >
                     Not Now
                   </button>
@@ -622,20 +598,21 @@ export default function OrderConfirmation() {
 
         {/* Push Notification Opt-in Banner */}
         {!isCancelled && !isCompleted && pushStatus === 'idle' && (
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-5 mb-6 text-white shadow-xl animate-fade-in-up relative overflow-hidden" style={{ animationDelay: '0.12s' }}>
-            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-2xl"></div>
+          <div className="bg-primary-50 border border-primary-100 rounded-2xl p-5 mb-6 text-surface-900 shadow-lg animate-fade-in-up relative overflow-hidden" style={{ animationDelay: '0.12s' }}>
+            <div className="absolute top-0 right-0 w-24 h-24 bg-primary-300/20 rounded-full -mr-12 -mt-12 blur-2xl"></div>
             <div className="relative z-10 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md border border-white/20 shrink-0">
-                <BellRing className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-primary-100 shrink-0">
+                <BellRing className="w-6 h-6" style={{ color: brandingColor }} />
               </div>
               <div className="flex-1">
                 <h4 className="text-sm font-black mb-0.5">Get notified when your order is ready!</h4>
-                <p className="text-[10px] text-blue-100 leading-relaxed">Receive a notification even when your phone is locked.</p>
+                <p className="text-[10px] text-surface-500 leading-relaxed">Receive a notification even when your phone is locked.</p>
               </div>
             </div>
             <button
               onClick={handleEnablePush}
-              className="mt-4 w-full py-3 bg-white text-blue-700 font-black text-xs uppercase tracking-widest rounded-xl hover:bg-blue-50 transition-all active:scale-95 shadow-lg"
+              className="mt-4 w-full py-3 bg-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-primary-100 transition-all active:scale-95 shadow-lg"
+              style={{ color: brandingColor }}
             >
               Enable Notifications
             </button>
@@ -740,7 +717,9 @@ export default function OrderConfirmation() {
             ))}
           </div>
           <div className="border-t border-surface-200 mt-3 pt-3 space-y-1">
-            <div className="flex justify-between text-xs sm:text-sm"><span className="text-surface-500">Subtotal</span><span>{formatCurrency(order.subtotal)}</span></div>
+            {(order.deliveryFee > 0 || order.discountAmount > 0 || order.taxAmount > 0) && (
+              <div className="flex justify-between text-xs sm:text-sm"><span className="text-surface-500">Subtotal</span><span>{formatCurrency(order.subtotal)}</span></div>
+            )}
             {order.deliveryFee > 0 && (
               <div className="flex justify-between text-xs sm:text-sm text-surface-500">
                 <span>Delivery Fee</span>
@@ -767,20 +746,6 @@ export default function OrderConfirmation() {
             </div>
           </div>
         </div>
-
-        {order.paymentStatus === 'paid' && order.customerId && (
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl p-6 mb-6 text-white shadow-xl shadow-emerald-200 overflow-hidden relative animate-bounce-in" style={{ animationDelay: '0.4s' }}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
-            <div className="relative z-10 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Loyalty Reward</p>
-                <h4 className="text-2xl font-black mb-1">+{Math.floor(order.total / (branding?.points_rate || 100))} Points Earned!</h4>
-                <p className="text-xs font-medium text-emerald-50">Thanks for being a member, {order.customerName.split(' ')[0]}!</p>
-              </div>
-              <div className="text-primary-100 opacity-90"><Gem className="w-10 h-10" /></div>
-            </div>
-          </div>
-        )}
 
         <div className="flex flex-col sm:flex-row gap-3 animate-fade-in-up mb-4 no-print" style={{ animationDelay: '0.5s' }}>
           {order.status === 'pending' && order.paymentStatus !== 'paid' && (

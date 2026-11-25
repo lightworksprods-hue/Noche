@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, ArrowUpRight } from 'lucide-react';
 import { getAdminNotifications } from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
@@ -12,7 +12,7 @@ const formatTime = (value) => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-export default function AdminNotifications({ userId, onNavigate, onPendingBookingCountChange }) {
+export default function AdminNotifications({ userId, activeTab, onNavigate, onPendingBookingCountChange }) {
   const [notifications, setNotifications] = useState([]);
   const [readIds, setReadIds] = useState(() => {
     try {
@@ -22,7 +22,19 @@ export default function AdminNotifications({ userId, onNavigate, onPendingBookin
     }
   });
   const [open, setOpen] = useState(false);
+  const notificationRef = useRef(null);
   const { onEvent } = useSocket();
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [open]);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -43,15 +55,28 @@ export default function AdminNotifications({ userId, onNavigate, onPendingBookin
   useEffect(() => {
     const unsubscribeUpdate = onEvent('admin_notification_update', loadNotifications);
     const unsubscribeFeedback = onEvent('new_feedback', loadNotifications);
+    const unsubscribeNewOrder = onEvent('new_order', loadNotifications);
     return () => {
       unsubscribeUpdate();
       unsubscribeFeedback();
+      unsubscribeNewOrder();
     };
   }, [onEvent, loadNotifications]);
 
   useEffect(() => {
     localStorage.setItem(`admin_notification_reads_${userId}`, JSON.stringify(readIds.slice(-100)));
   }, [readIds, userId]);
+
+  // Opening the page associated with an alert marks those alerts as read.
+  useEffect(() => {
+    if (!activeTab || notifications.length === 0) return;
+    const pageNotificationIds = notifications
+      .filter(notification => notification.tab === activeTab)
+      .map(notification => notification.id);
+    if (pageNotificationIds.length > 0) {
+      setReadIds(current => [...new Set([...current, ...pageNotificationIds])]);
+    }
+  }, [activeTab, notifications]);
 
   const unreadCount = useMemo(
     () => notifications.filter(notification => !readIds.includes(notification.id)).length,
@@ -69,7 +94,7 @@ export default function AdminNotifications({ userId, onNavigate, onPendingBookin
   ]);
 
   return (
-    <div className="relative">
+    <div ref={notificationRef} className="relative">
       <button
         type="button"
         aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
@@ -86,7 +111,6 @@ export default function AdminNotifications({ userId, onNavigate, onPendingBookin
 
       {open && (
         <>
-          <button type="button" aria-label="Close notifications" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
           <div className="fixed inset-x-2 top-16 z-50 w-auto overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-[min(90vw,380px)]">
             <div className="flex items-start justify-between gap-3 border-b border-surface-100 px-4 py-3">
               <div>

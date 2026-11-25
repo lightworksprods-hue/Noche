@@ -244,7 +244,7 @@ export default function AdminDashboard() {
               <p className="text-sm font-bold text-surface-900">{user?.name}</p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-surface-500">{user?.role}</p>
             </div>
-            <AdminNotifications userId={user?.id} onNavigate={setActiveTab} />
+            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} />
             <button
               onClick={logoutUser}
               aria-label="Log out"
