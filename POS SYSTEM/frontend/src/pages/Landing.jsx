@@ -272,7 +272,7 @@ export default function Landing() {
       </div>
 
       {/* Main Content Wrapper - Centered */}
-      <div className="relative z-20 flex flex-1 min-h-[calc(100dvh-82px)] w-full max-w-7xl mx-auto flex-col items-center justify-center px-5 py-10 text-center animate-fade-in-up sm:px-8 sm:py-12 md:max-w-4xl md:py-8 lg:px-12 lg:py-8">
+      <div className="relative z-20 flex flex-1 min-h-[calc(100dvh-82px)] w-full max-w-7xl mx-auto flex-col items-center justify-center px-6 py-12 text-center animate-fade-in-up sm:px-8 sm:py-16 lg:px-12 lg:py-8">
         {isCustomer && (
           <div className="inline-flex flex-col items-center gap-2 mb-8 animate-fade-in">
             <div className="bg-emerald-500/10 border border-emerald-500/20 px-8 py-3 rounded-[2rem] text-emerald-400 font-bold text-lg backdrop-blur-md shadow-xl shadow-emerald-500/10 flex flex-col items-center">
@@ -284,13 +284,13 @@ export default function Landing() {
           </div>
         )}
 
-        <div className="flex justify-center mb-8 sm:mb-10 md:mb-7 lg:mb-7">
-          <div className="w-24 h-24 md:w-28 md:h-28 lg:w-40 lg:h-40 rounded-[40px] overflow-hidden shadow-2xl ring-8 ring-white/5 animate-scale-in transition-transform hover:scale-110 duration-500 bg-white/10">
+        <div className="flex justify-center mb-8 sm:mb-10 lg:mb-7">
+          <div className="w-24 h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 rounded-[40px] overflow-hidden shadow-2xl ring-8 ring-white/5 animate-scale-in transition-transform hover:scale-110 duration-500 bg-white/10">
             <img src="/logo.png" className="w-full h-full object-cover" alt="Mona's Pang Noche Buena" onError={(e) => { e.currentTarget.src = '/logo.png'; }} />
           </div>
         </div>
 
-        <h1 className="font-heading text-5xl sm:text-6xl md:text-7xl lg:text-[clamp(5rem,8vw,9rem)] font-black text-white leading-[0.9] mb-9 md:mb-8 lg:mb-9 uppercase tracking-tighter">
+        <h1 className="font-heading text-5xl sm:text-6xl md:text-8xl lg:text-[clamp(5rem,8vw,9rem)] font-black text-white leading-[0.9] mb-10 lg:mb-9 uppercase tracking-tighter">
           MONA'S PANG
           <br />
           <span style={{ color: primaryColor }} className="drop-shadow-[0_0_30px_rgba(10,61,1,0.5)]">
@@ -316,13 +316,13 @@ export default function Landing() {
             </>
           ) : (
             <>
-              <Link to={menuLink} className="btn-custom w-full text-xl md:text-lg lg:text-2xl py-6 md:py-5 lg:py-7 rounded-3xl font-black tracking-widest uppercase flex items-center justify-center gap-3 shadow-2xl transition-all hover:scale-105" id="start-order-btn">
+              <Link to={menuLink} className="btn-custom w-full text-xl lg:text-2xl py-6 lg:py-7 rounded-3xl font-black tracking-widest uppercase flex items-center justify-center gap-3 shadow-2xl transition-all hover:scale-105" id="start-order-btn">
                 {isCustomer ? 'Start Ordering' : 'Start Order'}
               </Link>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full mt-2">
                 {!user && (
-                  <Link to={portalLink} className="py-4 px-6 bg-white/5 border border-white/10 text-white hover:bg-white/10 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+                  <Link to={portalLink} className="w-full md:col-span-2 md:max-w-sm md:mx-auto py-4 px-6 bg-white/5 border border-white/10 text-white hover:bg-white/10 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2">
                     <span></span> Sign In
                   </Link>
                 )}
