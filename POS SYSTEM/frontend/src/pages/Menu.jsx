@@ -1636,9 +1636,26 @@ export default function Menu() {
                         <div className="text-left sm:text-right">
                           <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Total</p>
                           <p className="font-black text-surface-900">{formatCurrency(order.total || 0)}</p>
-                          <p className="text-xs text-surface-500 mt-1 capitalize">{order.status || 'pending'}</p>
+                          <p className={`text-xs font-bold mt-1 ${order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-surface-500'}`}>
+                            {order.paymentStatus === 'paid' ? 'Fully Paid' : (order.status || 'pending')}
+                          </p>
                         </div>
                       </div>
+
+                      {order.paymentMode === 'downpayment' && (
+                        <div className={`mt-4 rounded-xl border p-3 ${order.paymentStatus === 'paid' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                          <p className={`text-[10px] font-black uppercase tracking-widest ${order.paymentStatus === 'paid' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                            {order.paymentStatus === 'paid' ? 'Payment Complete' : order.paymentStatus === 'partially_paid' ? 'Downpayment Paid' : 'Downpayment Submitted'}
+                          </p>
+                          {order.paymentStatus === 'paid' ? (
+                            <p className="mt-1 text-sm font-bold text-emerald-700">Fully paid</p>
+                          ) : (
+                            <p className="mt-1 text-sm font-bold text-amber-800">
+                              Balance due: {formatCurrency(Math.max(Number(order.total || 0) * 0.5, 0))}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {Array.isArray(order.items) && order.items.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-surface-200 space-y-2">
