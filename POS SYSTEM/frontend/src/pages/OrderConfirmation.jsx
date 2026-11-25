@@ -424,6 +424,8 @@ export default function OrderConfirmation() {
   // the equivalent booked stage after the workflow was simplified.
   const displayStatus = order.status === 'preparing' ? 'booked' : order.status;
   const currentStep = statusSteps.findIndex(s => s.key === displayStatus);
+  const hasOutstandingBalance = order.paymentMode === 'downpayment' && order.paymentStatus !== 'paid';
+  const outstandingBalance = Math.max(Number(order.total || 0) * 0.5, 0);
   const isCancelled = order.status === 'cancelled';
   const isCompleted = order.status === 'completed';
   const isReady = order.status === 'ready';
@@ -706,6 +708,9 @@ export default function OrderConfirmation() {
           <div className="space-y-1 text-xs sm:text-sm">
             <div className="flex justify-between py-1"><span className="text-surface-500">Customer</span><span className="font-medium">{order.customerName}</span></div>
             <div className="flex justify-between py-1"><span className="text-surface-500">Payment</span><span className="font-medium uppercase">{order.paymentMethod}</span></div>
+            {order.paymentMode === 'downpayment' && (
+              <div className="flex justify-between py-1"><span className="text-surface-500">Payment Plan</span><span className="font-medium">50% Downpayment</span></div>
+            )}
             <div className="flex justify-between py-1"><span className="text-surface-500">Placed</span><span className="font-medium">{formatDate(order.createdAt)}</span></div>
           </div>
           <div className="border-t border-surface-100 mt-3 pt-3">
@@ -747,6 +752,12 @@ export default function OrderConfirmation() {
                 {formatCurrency(order.total)}
               </span>
             </div>
+            {hasOutstandingBalance && (
+              <div className="mt-2 flex justify-between rounded-xl bg-pink-50 px-3 py-2 text-sm font-black text-primary-700">
+                <span>Balance Due</span>
+                <span>{formatCurrency(outstandingBalance)}</span>
+              </div>
+            )}
           </div>
         </div>
 

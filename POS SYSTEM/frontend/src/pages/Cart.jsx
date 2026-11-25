@@ -1,7 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { formatCurrency } from '../utils/helpers';
-import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
 import { getPublicTenant, getProducts } from '../services/api';
 import { applyTheme } from '../utils/theme';
@@ -46,16 +45,13 @@ const TRANSLATIONS = {
 };
 
 export default function Cart() {
-  const { items, updateQuantity, removeFromCart, toggleRedemption, clearCart, getSubtotal, getItemCount, getTotalPointsCost, addToCart } = useCart();
-  const { user } = useAuth();
+  const { items, updateQuantity, removeFromCart, clearCart, getSubtotal, getItemCount, addToCart } = useCart();
   const [searchParams] = useSearchParams();
   const tenantSlug = searchParams.get('tenant') || 'project-million';
   const [branding, setBranding] = useState(null);
   useStoreOperationRealtime(branding, setBranding);
   
-  const isCustomer = user && user.role === 'customer';
   const subtotal = getSubtotal();
-  const totalPoints = getTotalPointsCost();
   const count = getItemCount();
 
   const lang = localStorage.getItem('pos_lang') || 'en';
@@ -167,13 +163,6 @@ export default function Cart() {
         <Link to={menuLink} className="inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-3 bg-white rounded-full text-xs sm:text-sm font-bold text-surface-700 shadow-sm border border-surface-200 hover:border-primary-300 hover:shadow-md transition-all">
           <span className="text-lg sm:text-xl leading-none">←</span> {t('backToMenu')}
         </Link>
-        
-        {isCustomer && (
-          <div className="bg-white border border-surface-200 px-4 py-2 rounded-2xl shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{t('pointsBalance')}</p>
-            <p className="text-sm font-black text-emerald-600 leading-none flex items-center gap-1"><Gem className="w-3 h-3 text-emerald-500" /> {Math.floor(user.points)} <span className="text-[10px]">PTS</span></p>
-          </div>
-        )}
       </div>
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pt-4 md:pt-6">

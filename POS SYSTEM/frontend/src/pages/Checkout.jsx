@@ -130,6 +130,16 @@ export default function Checkout() {
   const [showSaveContactPrompt, setShowSaveContactPrompt] = useState(false);
   const [pendingContact, setPendingContact] = useState(null);
   const saveContactResolver = useRef(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      const storedContact = JSON.parse(localStorage.getItem(`saved_checkout_contact_${user.id}`) || 'null');
+      if (storedContact) setSavedContact(storedContact);
+    } catch {
+      setSavedContact(null);
+    }
+  }, [user?.id]);
   const [customerName, setCustomerName] = useState(() => savedContact?.name || user?.name || '');
   const [customerPhone, setCustomerPhone] = useState(() => savedContact?.phone || user?.phone || '');
   const [customerEmail, setCustomerEmail] = useState(() => savedContact?.email || user?.email || '');
@@ -318,7 +328,7 @@ export default function Checkout() {
       }
       localStorage.setItem(lastOrderKey, order.orderNumber);
 
-      if (user && savedContactKey) {
+      if (user && savedContactKey && !savedContact) {
         const contact = { name: customerName.trim(), phone: customerPhone, email: customerEmail.trim() };
         const shouldSave = await new Promise(resolve => {
           saveContactResolver.current = resolve;
