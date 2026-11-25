@@ -8,6 +8,7 @@ import { applyTheme } from '../utils/theme';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
@@ -86,7 +87,7 @@ export default function Login() {
       const res = await login({ email, password, tenantSlug, turnstileToken: captchaToken || undefined });
       const { token, user } = res.data.data;
       unlockAudio(); // Automatically enable sound system
-      loginUser(token, user);
+      loginUser(token, user, rememberMe);
 
       // Redirect based on role
       if (user.role === 'superadmin') navigate('/superadmin');
@@ -163,6 +164,16 @@ export default function Login() {
               )}
             </button>
           </div>
+
+          <label className="flex items-center gap-2.5 text-sm text-white/70 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={e => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded border-white/30 bg-black/20 text-pink-500 focus:ring-pink-400/50"
+            />
+            Remember me on this device
+          </label>
 
           <button type="submit" disabled={loading || lockoutSeconds > 0 || (showCaptcha && turnstileSiteKey && !captchaToken)} className="w-full py-3.5 rounded-xl text-white font-bold transition-all transform active:scale-[0.98] shadow-lg" style={{ backgroundColor: brandingColor }}>
             {loading ? 'Signing in...' : lockoutSeconds > 0 ? `Try again in ${lockoutSeconds}s` : 'Sign In'}

@@ -10,7 +10,7 @@ import useStoreOperationRealtime from '../hooks/useStoreOperationRealtime';
 import { applyTheme, clearTheme } from '../utils/theme';
 import SeasonalEffects from '../components/SeasonalEffects';
 import LocationPicker from '../components/LocationPicker';
-import { ArrowLeft, Bean, Lock, ScrollText, LogOut, Utensils, Package, Star, Flame, CheckCircle, Ban, Wheat, AlertCircle, Leaf, Info, Gift, Tag, Coffee, Store, Sparkles, ChevronDown, CalendarDays, MapPin, Phone, FileText } from 'lucide-react';
+import { ArrowLeft, Bean, Lock, ScrollText, LogOut, LayoutGrid, Package, Star, Flame, CheckCircle, Ban, Wheat, AlertCircle, Leaf, Info, Gift, Tag, Coffee, Store, Sparkles, ChevronDown, CalendarDays, MapPin, Phone, FileText } from 'lucide-react';
 
 const COMMON_EVENT_TYPES = ['Birthday', 'Wedding', 'Corporate event', 'School event', 'Festival or market', 'Private gathering', 'Other'];
 const COFFEE_DRINKS = ['Americano', 'Cafe Latte', 'Spanish Latte', 'Cafe Mocha', 'Caramel Macchiato'];
@@ -697,12 +697,12 @@ export default function Menu() {
         </div>
       )}
 
-      <div className="max-w-[1480px] mx-auto px-4 md:px-6 lg:px-8 pt-4 md:pt-6 flex flex-col md:flex-row gap-8 md:gap-10 lg:gap-12">
+      <div className="max-w-[1480px] mx-auto px-4 md:px-6 lg:px-8 pt-4 md:pt-6 flex flex-col lg:flex-row gap-6 md:gap-7 lg:gap-12">
         {/* Left Sidebar: Categories */}
-        <div className="w-full md:w-56 lg:w-72 flex-shrink-0 animate-fade-in-up relative max-w-full min-w-0">
-          <div className="md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] flex flex-col">
-            <div className="flex-shrink-0 mb-6">
-              <div className="flex items-start gap-3 mb-2 md:mb-3">
+        <div className="w-full lg:w-72 flex-shrink-0 animate-fade-in-up relative max-w-full min-w-0">
+          <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] flex flex-col">
+            <div className="flex-shrink-0 mb-4 md:mb-5 lg:mb-6">
+              <div className="flex items-center gap-3 mb-2 md:mb-3">
                 <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl overflow-hidden shadow-lg border-2 border-white flex-shrink-0 bg-white">
                   <img src="/logo.png" className="w-full h-full object-cover" alt="Mona's Pang Noche Buena" onError={(e) => { e.currentTarget.src = '/logo.png'; }} />
                 </div>
@@ -713,26 +713,26 @@ export default function Menu() {
               </div>
             </div>
 
-            <div className="flex overflow-x-auto md:flex-col gap-2 md:gap-3 pb-2 md:pb-20 scrollbar-hide px-1 md:overflow-y-auto rounded-xl md:rounded-3xl">
+            <div className="flex overflow-x-auto lg:flex-col gap-2 md:gap-3 pb-2 lg:pb-20 scrollbar-hide px-1 lg:overflow-y-auto rounded-xl lg:rounded-3xl">
               <button
                 onClick={() => setActiveCategory('all')}
-                className={`flex-shrink-0 w-20 md:w-full flex flex-col md:flex-row items-center justify-center md:justify-start text-center md:text-left aspect-square md:aspect-auto rounded-2xl md:rounded-2xl p-2 md:py-3.5 md:px-5 transition-all ${activeCategory === 'all' ? 'text-white shadow-lg shadow-primary-500/30 scale-105 md:scale-100' : 'bg-white text-surface-600 border border-surface-200 hover:border-primary-300 hover:bg-surface-50 hover:scale-105 md:hover:scale-100'}`}
+                className={`flex-shrink-0 w-20 md:w-auto md:min-w-[150px] lg:w-full lg:min-w-0 flex flex-col md:flex-row items-center justify-center md:justify-start lg:justify-start text-center md:text-left aspect-square md:aspect-auto rounded-2xl p-2 md:py-3.5 md:px-5 transition-all ${activeCategory === 'all' ? 'text-white shadow-lg shadow-primary-500/30 scale-105 lg:scale-100' : 'bg-white text-surface-600 border border-surface-200 hover:border-primary-300 hover:bg-surface-50 hover:scale-105 lg:hover:scale-100'}`}
                 style={activeCategory === 'all' ? { backgroundColor: brandingColor } : {}}
               >
-                <div className="mb-1 md:mb-0 md:mr-4"><Utensils className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" /></div>
-                <span className="text-[10px] md:text-xs lg:text-sm font-bold leading-tight md:leading-normal">All Items</span>
+                <div className="mb-1 md:mb-0 md:mr-4"><LayoutGrid className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" /></div>
+                <span className="text-[10px] md:text-xs lg:text-sm font-bold leading-tight lg:leading-normal">All Items</span>
               </button>
               {categories.map(cat => (
                 <button
                   key={cat.id}
                   onClick={() => setActiveCategory(String(cat.id))}
-                  className={`flex-shrink-0 w-20 md:w-full flex flex-col md:flex-row items-center justify-center md:justify-start text-center md:text-left aspect-square md:aspect-auto rounded-2xl md:rounded-2xl p-2 md:py-3.5 md:px-5 transition-all ${activeCategory === String(cat.id) ? 'text-white shadow-lg shadow-primary-500/30 scale-105 md:scale-100' : 'bg-white text-surface-600 border border-surface-200 hover:border-primary-300 hover:bg-surface-50 hover:scale-105 md:hover:scale-100'}`}
+                  className={`flex-shrink-0 w-20 md:w-auto md:min-w-[150px] lg:w-full lg:min-w-0 flex flex-col md:flex-row items-center justify-center md:justify-start lg:justify-start text-center md:text-left aspect-square md:aspect-auto rounded-2xl p-2 md:py-3.5 md:px-5 transition-all ${activeCategory === String(cat.id) ? 'text-white shadow-lg shadow-primary-500/30 scale-105 lg:scale-100' : 'bg-white text-surface-600 border border-surface-200 hover:border-primary-300 hover:bg-surface-50 hover:scale-105 lg:hover:scale-100'}`}
                   style={activeCategory === String(cat.id) ? { backgroundColor: brandingColor } : {}}
                 >
                   <div className="mb-1 md:mb-0 md:mr-4">
                     {cat.icon === '📦' ? <Package className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" /> : (cat.icon || <Package className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" />)}
                   </div>
-                  <span className="text-[10px] md:text-xs lg:text-sm font-bold leading-tight md:leading-normal line-clamp-2 md:line-clamp-1">{cat.name}</span>
+                  <span className="text-[10px] md:text-xs lg:text-sm font-bold leading-tight lg:leading-normal line-clamp-2 lg:line-clamp-1">{cat.name}</span>
                 </button>
               ))}
             </div>
@@ -752,7 +752,7 @@ export default function Menu() {
                 <span className="w-2 h-8 rounded-full" style={{ backgroundColor: brandingColor }}></span>
                 {cat.name}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6">
                 {cat.products?.map((product, idx) => (
                   <button
                     key={product.id}

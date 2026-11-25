@@ -4,11 +4,17 @@ import { LogOut } from 'lucide-react';
 
 const AuthContext = createContext(null);
 const OFFLINE_STAFF_SESSION_KEY = 'pos_offline_staff_session';
+const STAFF_ROLES = ['admin', 'superadmin', 'cashier', 'kitchen', 'rider'];
+
+const getAuthStorage = () => (
+  localStorage.getItem('pos_token') ? localStorage : sessionStorage
+);
 
 const getCachedStaffSession = () => {
   try {
-    const cachedUser = JSON.parse(localStorage.getItem(OFFLINE_STAFF_SESSION_KEY) || 'null');
-    return cachedUser && ['admin'].includes(cachedUser.role) ? cachedUser : null;
+    const storage = localStorage.getItem('pos_token') ? localStorage : sessionStorage;
+    const cachedUser = JSON.parse(storage.getItem(OFFLINE_STAFF_SESSION_KEY) || 'null');
+    return cachedUser && STAFF_ROLES.includes(cachedUser.role) ? cachedUser : null;
   } catch {
     return null;
   }
@@ -47,7 +53,7 @@ export function AuthProvider({ children }) {
             setUser(null);
           } else {
             setUser(userData);
-            localStorage.setItem(OFFLINE_STAFF_SESSION_KEY, JSON.stringify(userData));
+            getAuthStorage().setItem(OFFLINE_STAFF_SESSION_KEY, JSON.stringify(userData));
           }
         } else {
           const cachedUser = getCachedStaffSession();
@@ -68,15 +74,23 @@ export function AuthProvider({ children }) {
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const loginUser = (token, userData) => {
+  const loginUser = (token, userData, rememberMe = true) => {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    const temporaryStorage = rememberMe ? sessionStorage : localStorage;
+
+    // Keep only one active storage mode so an old remembered session cannot override this choice.
+    temporaryStorage.removeItem('pos_token');
+    temporaryStorage.removeItem('tenant_id');
+    temporaryStorage.removeItem(OFFLINE_STAFF_SESSION_KEY);
+
     // Store token for WebSocket authentication handshake
     if (token) {
-      localStorage.setItem('pos_token', token);
+      storage.setItem('pos_token', token);
     }
     if (userData.tenantId) {
-      localStorage.setItem('tenant_id', userData.tenantId.toString());
+      storage.setItem('tenant_id', userData.tenantId.toString());
     }
-    localStorage.setItem(OFFLINE_STAFF_SESSION_KEY, JSON.stringify(userData));
+    storage.setItem(OFFLINE_STAFF_SESSION_KEY, JSON.stringify(userData));
     setUser(userData);
   };
 
@@ -100,6 +114,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('pos_token');
     localStorage.removeItem('tenant_id');
     localStorage.removeItem(OFFLINE_STAFF_SESSION_KEY);
+    sessionStorage.removeItem('pos_token');
+    sessionStorage.removeItem('tenant_id');
+    sessionStorage.removeItem(OFFLINE_STAFF_SESSION_KEY);
     setUser(null);
     setShowLogoutConfirm(false);
     
@@ -116,6 +133,7 @@ export function AuthProvider({ children }) {
     loading,
     loginUser,
     logoutUser,
+    performLogout,
     refreshUser,
     isAuthenticated: !!user
   };

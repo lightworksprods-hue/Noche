@@ -17,7 +17,7 @@ import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Sett
 import { useSocket } from '../context/SocketContext';
 
 export default function AdminDashboard() {
-  const { user, logoutUser } = useAuth();
+  const { user, logoutUser, performLogout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const allowedTabs = ['overview', 'orders', 'products', 'categories', 'inventory', 'staff', 'settings'];
@@ -255,7 +255,7 @@ export default function AdminDashboard() {
             </div>
             <div className="flex gap-3 border-t border-surface-100 bg-surface-50 p-6">
               <button type="button" onClick={() => setShowLogoutConfirm(false)} className="flex-1 rounded-xl border border-surface-200 bg-white px-4 py-3 text-sm font-black text-surface-600 transition hover:bg-surface-100">Stay Signed In</button>
-              <button type="button" onClick={() => { setShowLogoutConfirm(false); logoutUser(); }} className="flex-1 rounded-xl bg-primary-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 active:scale-95">Sign Out</button>
+              <button type="button" onClick={() => { setShowLogoutConfirm(false); performLogout(); }} className="flex-1 rounded-xl bg-primary-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 active:scale-95">Sign Out</button>
             </div>
           </div>
         </div>
