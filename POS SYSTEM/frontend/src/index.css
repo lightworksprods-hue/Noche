@@ -93,6 +93,10 @@
     @apply w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200;
   }
 
+  .back-button {
+    @apply inline-flex h-10 items-center gap-2 rounded-full border border-surface-200 bg-white px-4 text-sm font-bold text-surface-700 shadow-sm transition-all hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 hover:shadow-md active:scale-95;
+  }
+
   .input-field {
     @apply w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all duration-200;
   }

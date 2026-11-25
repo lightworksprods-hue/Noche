@@ -257,7 +257,7 @@ router.patch('/orders/:id/status', authenticate, authorize('admin'), async (req,
   try {
     const orderId = parseInt(req.params.id, 10);
     const { status } = req.body;
-    const allowedStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'];
+    const allowedStatuses = ['pending', 'booked', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'];
 
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid order status.' });
@@ -266,7 +266,7 @@ router.patch('/orders/:id/status', authenticate, authorize('admin'), async (req,
     const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: req.tenantId } });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
 
-    if (['confirmed', 'preparing', 'ready', 'completed'].includes(status) && ['qrph', 'cash'].includes(order.paymentMethod) && order.paymentStatus !== 'paid') {
+    if (['booked', 'confirmed', 'preparing', 'ready', 'completed'].includes(status) && ['qrph', 'cash'].includes(order.paymentMethod) && !['paid', 'partially_paid'].includes(order.paymentStatus)) {
       return res.status(400).json({ success: false, message: 'Confirm the payment before accepting this order.' });
     }
 
@@ -303,22 +303,34 @@ router.patch('/orders/:id/status', authenticate, authorize('admin'), async (req,
 router.patch('/orders/:id/payment', authenticate, authorize('admin'), async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
-    const { paymentStatus } = req.body;
-    if (!['paid', 'rejected'].includes(paymentStatus)) {
+    const { paymentStatus, paymentMethod, paymentReference } = req.body;
+    if (!['paid', 'partially_paid', 'rejected'].includes(paymentStatus)) {
       return res.status(400).json({ success: false, message: 'Invalid payment decision.' });
     }
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: req.tenantId } });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
-    if (!['qrph', 'cash'].includes(order.paymentMethod) || order.paymentStatus !== 'submitted') {
+    const verifyingInitialPayment = order.paymentStatus === 'submitted';
+    const finalizingDownpayment = order.paymentStatus === 'partially_paid' && paymentStatus === 'paid';
+    if (!['qrph', 'cash'].includes(order.paymentMethod) || (!verifyingInitialPayment && !finalizingDownpayment)) {
       return res.status(400).json({ success: false, message: 'This order has no payment waiting for verification.' });
+    }
+    if (!verifyingInitialPayment && paymentStatus !== 'paid') {
+      return res.status(400).json({ success: false, message: 'This order is already partially paid.' });
+    }
+    if (paymentMethod && !['cash', 'qrph'].includes(paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'Invalid payment method.' });
     }
 
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: {
         paymentStatus,
-        ...(paymentStatus === 'paid' ? { status: 'confirmed', confirmedAt: new Date() } : { status: 'cancelled' })
+        ...(verifyingInitialPayment && paymentStatus !== 'rejected' ? { status: 'booked', confirmedAt: new Date() } : {}),
+        ...(verifyingInitialPayment && paymentStatus !== 'rejected' ? { paymentVerifiedAt: new Date() } : {}),
+        ...(paymentStatus === 'paid' ? { fullyPaidAt: new Date() } : {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(paymentReference ? { paymentReference: String(paymentReference).slice(-4) } : {})
       },
       include: { items: true, payments: true }
     });
@@ -327,14 +339,14 @@ router.patch('/orders/:id/payment', authenticate, authorize('admin'), async (req
       data: {
         tenantId: req.tenantId,
         userId: req.user.id,
-        action: paymentStatus === 'paid' ? 'admin_verified_order_payment' : 'admin_rejected_order_payment',
+        action: paymentStatus === 'rejected' ? 'admin_rejected_order_payment' : (finalizingDownpayment ? 'admin_completed_order_payment' : 'admin_verified_order_payment'),
         entityType: 'order',
         entityId: order.orderNumber,
-        details: `Admin ${paymentStatus === 'paid' ? 'verified' : 'rejected'} QR Ph payment for Order #${order.orderNumber}.`
+        details: `Admin ${paymentStatus === 'rejected' ? 'rejected' : finalizingDownpayment ? 'recorded full payment for' : 'verified payment for'} Order #${order.orderNumber}.`
       }
     });
 
-    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, paymentStatus === 'paid' ? 'confirmed' : 'cancelled');
+    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, paymentStatus === 'rejected' ? 'cancelled' : (verifyingInitialPayment ? 'booked' : 'payment_updated'));
     res.json({ success: true, data: updated });
   } catch (error) {
     console.error('Admin order payment error:', error);
@@ -358,7 +370,7 @@ router.get('/products', authenticate, authorize('admin'), async (req, res) => {
 
 router.post('/products', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, description, price, costPrice, image, categoryId, stock, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
+    const { name, description, price, costPrice, image, images, categoryId, stock, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
     if (!name || !price || !categoryId) {
       return res.status(400).json({ success: false, message: 'Name, price, and category are required.' });
     }
@@ -366,6 +378,7 @@ router.post('/products', authenticate, authorize('admin'), async (req, res) => {
       data: {
         tenantId: req.tenantId,
         name, description, price: parseFloat(price), image,
+        images: Array.isArray(images) && images.length > 0 ? images : null,
         costPrice: costPrice ? parseFloat(costPrice) : 0,
         categoryId: parseInt(categoryId), stock: parseInt(stock) || 100,
         available: available !== false,
@@ -400,7 +413,7 @@ router.post('/products', authenticate, authorize('admin'), async (req, res) => {
 
 router.put('/products/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, description, price, costPrice, image, categoryId, stock, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
+    const { name, description, price, costPrice, image, images, categoryId, stock, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
 
     // Handle addons: Delete old ones and create new ones (sync)
     if (addons) {
@@ -417,7 +430,8 @@ router.put('/products/:id', authenticate, authorize('admin'), async (req, res) =
       data: {
         name, description, price: price ? parseFloat(price) : undefined,
         costPrice: costPrice !== undefined ? parseFloat(costPrice) : undefined,
-        image, categoryId: categoryId ? parseInt(categoryId) : undefined,
+        image, images: images !== undefined ? (Array.isArray(images) && images.length > 0 ? images : null) : undefined,
+        categoryId: categoryId ? parseInt(categoryId) : undefined,
         stock: stock !== undefined ? parseInt(stock) : undefined,
         available,
         pointsCost: pointsCost !== undefined ? (pointsCost ? parseInt(pointsCost) : null) : undefined,

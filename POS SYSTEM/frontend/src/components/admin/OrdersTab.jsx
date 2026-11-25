@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import { AlertTriangle, CircleAlert, MoreVertical, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, CircleAlert, MoreVertical, Trash2 } from 'lucide-react';
 import PaginationControls from './PaginationControls';
 import { useSocket } from '../../context/SocketContext';
 
@@ -68,6 +68,7 @@ export default function OrdersTab() {
       case 'preparing': return 'bg-amber-100 text-amber-700';
       case 'pending': return 'bg-blue-100 text-blue-700';
       case 'confirmed': return 'bg-pink-100 text-pink-700';
+      case 'booked': return 'bg-pink-100 text-pink-700';
       case 'cancelled': return 'bg-red-100 text-red-700';
       default: return 'bg-surface-100 text-surface-700';
     }
@@ -104,7 +105,10 @@ export default function OrdersTab() {
 
   const handlePaymentDecision = async (order, paymentStatus) => {
     try {
-      await updateAdminOrderPayment(order.id, paymentStatus);
+      const verifiedStatus = paymentStatus === 'paid' && order.paymentStatus === 'submitted' && order.paymentMode !== 'full_payment'
+        ? 'partially_paid'
+        : paymentStatus;
+      await updateAdminOrderPayment(order.id, verifiedStatus);
       await loadOrders();
     } catch (error) {
       console.error(error);
@@ -200,7 +204,7 @@ export default function OrdersTab() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {['all', 'pending', 'preparing', 'completed', 'cancelled'].map(s => (
+            {['all', 'pending', 'booked', 'preparing', 'ready', 'completed', 'cancelled'].map(s => (
               <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={`flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${status === s ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20' : 'bg-white text-surface-500 border border-surface-200 hover:bg-surface-50'}`}>
                 {s}
               </button>
@@ -256,7 +260,13 @@ export default function OrdersTab() {
                     <span className="text-xs font-medium text-surface-600 capitalize">{order.paymentMethod === 'qrph' ? 'QR Ph' : (order.paymentMethod || 'Cash')}</span>
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && (
                       <div className={`mt-1 text-[10px] font-black uppercase ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {order.paymentStatus === 'submitted' ? `Verify • ${order.paymentMode === 'full_payment' ? 'Full' : '50%'} • Ref ${order.paymentReference || '—'} • ${formatCurrency(order.paymentMode === 'full_payment' ? order.total : order.total * 0.5)}` : order.paymentStatus}
+                        {order.paymentStatus === 'submitted'
+                          ? `Verify • ${order.paymentMode === 'full_payment' ? 'Full' : '50%'} • Ref ${order.paymentReference || '—'} • ${formatCurrency(order.paymentMode === 'full_payment' ? order.total : order.total * 0.5)}`
+                          : order.paymentStatus === 'partially_paid'
+                            ? `50% paid • Balance ${formatCurrency(order.total * 0.5)}`
+                            : order.paymentStatus}
+                        {order.paymentVerifiedAt && <div className="mt-1 normal-case font-semibold text-surface-500">50% verified: {formatDate(order.paymentVerifiedAt)}</div>}
+                        {order.fullyPaidAt && <div className="normal-case font-semibold text-emerald-600">Fully paid: {formatDate(order.fullyPaidAt)}</div>}
                       </div>
                     )}
                   </td>
@@ -264,23 +274,42 @@ export default function OrdersTab() {
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
                       <div className="mb-2 flex justify-end gap-2">
                         <button onClick={() => handlePaymentDecision(order, 'rejected')} className="rounded-lg bg-red-50 px-2 py-1 text-[10px] font-black uppercase text-red-600 hover:bg-red-100">Reject</button>
-                        <button onClick={() => handlePaymentDecision(order, 'paid')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">Confirm Payment</button>
+                        <button onClick={() => handlePaymentDecision(order, 'paid')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">{order.paymentMode === 'full_payment' ? 'Confirm Full Payment' : 'Confirm 50% Payment'}</button>
+                      </div>
+                    )}
+                    {order.paymentStatus === 'partially_paid' && (
+                      <div className="mb-2 flex justify-end gap-2">
+                        <button onClick={() => updateAdminOrderPayment(order.id, 'paid', 'cash').then(loadOrders)} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">Balance Paid Cash</button>
+                        <button onClick={() => updateAdminOrderPayment(order.id, 'paid', 'qrph').then(loadOrders)} className="rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-black uppercase text-blue-600 hover:bg-blue-100">Balance Paid QR Ph</button>
                       </div>
                     )}
                     {order.status !== 'cancelled' && order.status !== 'completed' && (
-                      <select
-                        value={order.status}
-                        onChange={e => handleStatusChange(order, e.target.value)}
-                        className="mr-2 rounded-lg border border-surface-200 bg-white px-2 py-1 text-xs font-bold text-surface-700"
-                        aria-label={`Update order ${order.orderNumber} status`}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="confirmed">Accepted</option>
-                        <option value="preparing">Preparing</option>
-                        <option value="ready">Ready</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {(order.status === 'booked' || order.status === 'confirmed' || order.status === 'preparing') && (
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(order, 'ready')}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-emerald-700"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            {order.orderType === 'delivery' ? 'Ready for Delivery' : 'Ready for Pickup'}
+                          </button>
+                        )}
+                        <select
+                          value={order.status}
+                          onChange={e => handleStatusChange(order, e.target.value)}
+                          className="rounded-lg border border-surface-200 bg-white px-2 py-1 text-xs font-bold text-surface-700"
+                          aria-label={`Update order ${order.orderNumber} status`}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="booked">Booked</option>
+                          <option value="confirmed">Accepted</option>
+                          <option value="preparing">Booked</option>
+                          <option value="ready">Ready</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
                     )}
                     {order.status === 'cancelled' && (
                       <div className="relative inline-block" ref={openMenuId === order.id ? menuRef : null}>
@@ -357,15 +386,37 @@ export default function OrdersTab() {
                 <p className="text-sm font-medium text-surface-600 capitalize">{order.paymentMethod === 'qrph' ? 'QR Ph' : (order.paymentMethod || 'Cash')}</p>
                 {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && (
                   <p className={`text-[10px] font-black uppercase mt-1 ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {order.paymentStatus === 'submitted' ? `${order.paymentMode === 'full_payment' ? 'Full' : '50%'} • Ref ${order.paymentReference || '—'} • ${formatCurrency(order.paymentMode === 'full_payment' ? order.total : order.total * 0.5)}` : order.paymentStatus}
+                    {order.paymentStatus === 'submitted'
+                      ? `${order.paymentMode === 'full_payment' ? 'Full' : '50%'} • Ref ${order.paymentReference || '—'} • ${formatCurrency(order.paymentMode === 'full_payment' ? order.total : order.total * 0.5)}`
+                      : order.paymentStatus === 'partially_paid'
+                        ? `50% paid • Balance ${formatCurrency(order.total * 0.5)}`
+                        : order.paymentStatus}
+                    {order.paymentVerifiedAt && <span className="mt-1 block normal-case font-semibold text-surface-500">50% verified: {formatDate(order.paymentVerifiedAt)}</span>}
+                    {order.fullyPaidAt && <span className="block normal-case font-semibold text-emerald-600">Fully paid: {formatDate(order.fullyPaidAt)}</span>}
                   </p>
                 )}
               </div>
               {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
                 <div className="col-span-2 flex gap-2">
                   <button onClick={() => handlePaymentDecision(order, 'rejected')} className="flex-1 rounded-xl bg-red-50 py-2 text-[10px] font-black uppercase text-red-600">Reject Payment</button>
-                  <button onClick={() => handlePaymentDecision(order, 'paid')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">Confirm Payment</button>
+                  <button onClick={() => handlePaymentDecision(order, 'paid')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">{order.paymentMode === 'full_payment' ? 'Confirm Full Payment' : 'Confirm 50% Payment'}</button>
                 </div>
+              )}
+              {order.paymentStatus === 'partially_paid' && (
+                <div className="col-span-2 flex gap-2">
+                  <button onClick={() => updateAdminOrderPayment(order.id, 'paid', 'cash').then(loadOrders)} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">Balance Paid Cash</button>
+                  <button onClick={() => updateAdminOrderPayment(order.id, 'paid', 'qrph').then(loadOrders)} className="flex-1 rounded-xl bg-blue-50 py-2 text-[10px] font-black uppercase text-blue-600">Balance Paid QR Ph</button>
+                </div>
+              )}
+              {order.status !== 'cancelled' && order.status !== 'completed' && (order.status === 'booked' || order.status === 'confirmed' || order.status === 'preparing') && (
+                <button
+                  type="button"
+                  onClick={() => handleStatusChange(order, 'ready')}
+                  className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-xs font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-emerald-700"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  {order.orderType === 'delivery' ? 'Mark Ready for Delivery' : 'Mark Ready for Pickup'}
+                </button>
               )}
               {order.status === 'cancelled' && (
                 <div className="flex items-end justify-end">

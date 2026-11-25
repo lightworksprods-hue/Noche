@@ -331,8 +331,8 @@ export default function MemberPortal() {
 
       <div className="w-full max-w-md relative z-10">
         {/* Back Button */}
-        <Link to="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors mb-8 text-sm font-bold uppercase tracking-widest">
-          <ArrowLeft className="w-4 h-4" /> Back to Kiosk
+        <Link to="/" className="back-button mb-8">
+          <ArrowLeft className="h-4 w-4" /> Back to Kiosk
         </Link>
 
         <div className="bg-[#FAF7F2] border border-[#EFEBE4] rounded-[40px] p-8 md:p-10 shadow-2xl shadow-[#DCD6C8]/40 relative overflow-hidden">

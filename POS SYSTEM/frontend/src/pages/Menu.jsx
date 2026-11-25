@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getProducts, changePassword, getOrder, trackVisit, getPublicPackages, getOrderHistory, getMyPackageBookings, getBookingAvailability, createPackageBooking } from '../services/api';
 import { useCart } from '../context/CartContext';
@@ -59,6 +59,8 @@ export default function Menu() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const galleryTouchStart = useRef(null);
   const [showRewards, setShowRewards] = useState(false);
   const [showPackages, setShowPackages] = useState(false);
   const [showPackageTerms, setShowPackageTerms] = useState(false);
@@ -246,6 +248,7 @@ export default function Menu() {
     }
     setOptionError(false);
     setSelectedProduct(product);
+    setGalleryIndex(0);
     window.history.pushState({ modalOpen: 'product' }, '');
   };
 
@@ -320,6 +323,12 @@ export default function Menu() {
   }, [selectedProduct]);
 
   const brandingColor = branding?.primaryColor || '#ec4899';
+  const selectedProductImages = selectedProduct ? [...new Set([
+    selectedProduct.isCombo && addOpts.comboChoices?.[`group${comboStep}`]?.image,
+    selectedProduct.image,
+    ...(Array.isArray(selectedProduct.images) ? selectedProduct.images : [])
+  ].filter(Boolean))] : [];
+  const activeProductImage = selectedProductImages[galleryIndex] || selectedProductImages[0];
   const itemCount = getItemCount();
   const bookingDrinkLimits = getPackageDrinkLimits(bookingPackage);
 
@@ -592,8 +601,8 @@ export default function Menu() {
       <div className="sticky top-0 z-40 bg-surface-50/90 backdrop-blur-xl border-b border-surface-200/50 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto p-3 md:p-6 lg:px-8 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2 shrink-0">
-            <Link to="/" className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-2 md:px-5 md:py-3 bg-white rounded-full text-[10px] md:text-sm font-bold text-surface-700 shadow-sm border border-surface-200 hover:border-primary-300 hover:shadow-md transition-all active:scale-95">
-              <span className="text-base md:text-xl leading-none"><ArrowLeft className="w-4 h-4 md:w-5 md:h-5 leading-none" /></span> <span className="hidden sm:inline">Back Home</span><span className="sm:hidden">Back</span>
+            <Link to="/" className="back-button">
+              <ArrowLeft className="h-4 w-4" /> <span>Back Home</span>
             </Link>
           </div>
 
@@ -865,16 +874,34 @@ export default function Menu() {
           <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-[calc(100vw-2rem)] sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up shadow-2xl" onClick={e => e.stopPropagation()}>
 
             {/* Modal Header Image */}
-            <div className="w-full h-64 sm:h-72 md:h-80 bg-surface-50 flex items-center justify-center text-7xl relative overflow-hidden flex-shrink-0">
-              {getOptimizedImageUrl((selectedProduct.isCombo && addOpts.comboChoices?.[`group${comboStep}`]?.image) || selectedProduct.image) && (
+            <div
+              className="relative flex h-64 w-full flex-shrink-0 touch-pan-y items-center justify-center overflow-hidden bg-surface-50 text-7xl sm:h-72 md:h-80"
+              onTouchStart={event => { galleryTouchStart.current = event.touches[0].clientX; }}
+              onTouchEnd={event => {
+                if (galleryTouchStart.current == null || selectedProductImages.length < 2) return;
+                const distance = event.changedTouches[0].clientX - galleryTouchStart.current;
+                if (Math.abs(distance) > 45) {
+                  setGalleryIndex(current => distance < 0 ? (current + 1) % selectedProductImages.length : (current - 1 + selectedProductImages.length) % selectedProductImages.length);
+                }
+                galleryTouchStart.current = null;
+              }}
+            >
+              {getOptimizedImageUrl(activeProductImage) && (
                 <img
-                  src={getOptimizedImageUrl((selectedProduct.isCombo && addOpts.comboChoices?.[`group${comboStep}`]?.image) || selectedProduct.image)}
+                  src={getOptimizedImageUrl(activeProductImage)}
                   className="w-full h-full object-cover relative z-10 transition-all duration-700"
                   alt={selectedProduct.name}
                   loading="lazy"
                   decoding="async"
                   sizes="(max-width: 768px) 100vw, 50vw"
                 />
+              )}
+              {selectedProductImages.length > 1 && (
+                <>
+                  <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/35 px-2.5 py-1.5 backdrop-blur">
+                    {selectedProductImages.map((image, index) => <button key={`${image}-${index}`} type="button" onClick={() => setGalleryIndex(index)} className={`h-1.5 rounded-full transition-all ${index === galleryIndex ? 'w-5 bg-white' : 'w-1.5 bg-white/60'}`} aria-label={`Show product image ${index + 1}`} />)}
+                  </div>
+                </>
               )}
               {/* Back Button for Combo Step 2 */}
               {selectedProduct.isCombo && comboStep > 1 && (

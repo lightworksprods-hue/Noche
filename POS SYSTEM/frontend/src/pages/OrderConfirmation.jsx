@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate, unlockAudio, formatMinutes } from '../utils/helpers';
 
 import { applyTheme, clearTheme } from '../utils/theme';
-import { ClipboardList, CheckCircle, ChefHat, Bell, XCircle, AlertTriangle, Clock, Home, ShoppingBag, Gift, Utensils, Star, Sparkles, Bean, UtensilsCrossed, Download, ArrowLeft, AlertOctagon, Truck, MapPin, Navigation, BellRing, Smartphone } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, CheckCircle, Bell, XCircle, AlertTriangle, Clock, Home, ShoppingBag, Gift, Utensils, Star, Sparkles, Bean, UtensilsCrossed, Download, ArrowLeft, AlertOctagon, Truck, MapPin, Navigation, BellRing, Smartphone } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -130,7 +130,7 @@ const GET_STATUS_STEPS = (orderType) => {
   const steps = [
     { key: 'pending', label: 'Order Received', icon: <ClipboardList className="w-6 h-6" />, activeBg: 'bg-primary-500', activeRing: 'ring-primary-100', inactiveBg: 'bg-primary-50' },
     { key: 'confirmed', label: 'Payment Confirmed', icon: <CheckCircle className="w-6 h-6" />, activeBg: 'bg-emerald-500', activeRing: 'ring-emerald-100', inactiveBg: 'bg-emerald-50' },
-    { key: 'preparing', label: 'Preparing', icon: <ChefHat className="w-6 h-6" />, activeBg: 'bg-primary-500', activeRing: 'ring-primary-100', inactiveBg: 'bg-slate-100' },
+    { key: 'booked', label: 'Booked', icon: <ClipboardCheck className="w-6 h-6" />, activeBg: 'bg-primary-500', activeRing: 'ring-primary-100', inactiveBg: 'bg-slate-100' },
   ];
 
   if (orderType === 'delivery') {
@@ -420,7 +420,10 @@ export default function OrderConfirmation() {
   if (!order) return <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center"><h2 className="text-xl font-bold mb-4">Order not found</h2><Link to={menuLink} className="btn-primary" style={{ backgroundColor: brandingColor }}>Back to Menu</Link></div>;
 
   const statusSteps = GET_STATUS_STEPS(order.orderType);
-  const currentStep = statusSteps.findIndex(s => s.key === order.status);
+  // Older orders may still have the legacy "preparing" status. Show them at
+  // the equivalent booked stage after the workflow was simplified.
+  const displayStatus = order.status === 'preparing' ? 'booked' : order.status;
+  const currentStep = statusSteps.findIndex(s => s.key === displayStatus);
   const isCancelled = order.status === 'cancelled';
   const isCompleted = order.status === 'completed';
   const isReady = order.status === 'ready';
@@ -433,8 +436,8 @@ export default function OrderConfirmation() {
   return (
     <div className="min-h-screen bg-surface-50 pb-8" style={{ '--primary-custom': brandingColor }}>
       <div className="p-4 md:p-6 pb-0">
-        <Link to={homeLink} className="inline-flex items-center gap-2 px-4 py-2 md:px-5 md:py-3 bg-white rounded-full text-xs md:text-sm font-bold text-surface-700 shadow-sm border border-surface-200 hover:border-primary-300 hover:shadow-md transition-all">
-          <ArrowLeft className="w-5 h-5 text-surface-500" /> <span>Back Home</span>
+        <Link to={homeLink} className="back-button">
+          <ArrowLeft className="h-4 w-4" /> <span>Back Home</span>
         </Link>
       </div>
 

@@ -31,27 +31,38 @@ export default function ProductsTab() {
 
   const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const getProductImages = (product) => [...new Set([
+    product?.image,
+    ...(Array.isArray(product?.images) ? product.images : [])
+  ].filter(Boolean))];
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      setUploading(true);
-      try {
-        const res = await uploadImage({
-          image: reader.result,
-          name: currentProduct.name || 'product',
-          bucket: 'products'
+  const handleFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    setUploading(true);
+    try {
+      const uploadedUrls = [];
+      for (const file of files) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
         });
-        setCurrentProduct({ ...currentProduct, image: res.data.url });
-      } catch (error) {
-        alert('Image upload failed');
-      } finally {
-        setUploading(false);
+        const res = await uploadImage({ image: dataUrl, name: currentProduct.name || 'product', bucket: 'products' });
+        uploadedUrls.push(res.data.url);
       }
-    };
-    reader.readAsDataURL(file);
+      setCurrentProduct(previous => {
+        const images = [...new Set([...getProductImages(previous), ...uploadedUrls])];
+        return { ...previous, image: images[0] || '', images };
+      });
+    } catch (error) {
+      alert('Image upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   const filteredProducts = products.filter(p => {
@@ -131,7 +142,8 @@ export default function ProductsTab() {
   };
 
   const handleEdit = async (product) => {
-    setCurrentProduct(product);
+    const images = getProductImages(product);
+    setCurrentProduct({ ...product, image: images[0] || '', images });
     setIsEditing(true);
     if (product.isCombo) {
       loadComboOptions(product.id);
@@ -192,7 +204,7 @@ export default function ProductsTab() {
   };
 
   const handleAdd = () => {
-    setCurrentProduct({ name: '', description: '', price: '', costPrice: '', pointsCost: '', image: '', categoryId: '', stock: 0, available: true, isCombo: false, tags: '', sizes: [] });
+    setCurrentProduct({ name: '', description: '', price: '', costPrice: '', pointsCost: '', image: '', images: [], categoryId: '', stock: 0, available: true, isCombo: false, tags: '', sizes: [] });
     setComboOptions([]);
     setProductRecipes([]);
     setIsEditing(true);
@@ -450,15 +462,13 @@ export default function ProductsTab() {
                 <div className="bg-surface-50 p-5 rounded-2xl border border-surface-200">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-surface-500 mb-4 ml-1">Media</h4>
                   <div className="flex flex-col sm:flex-row gap-5 items-start">
-                    <div className="w-24 h-24 rounded-2xl bg-white border border-surface-200 overflow-hidden flex-shrink-0 shadow-sm relative">
-                      {currentProduct.image ? (
-                        <img
-                          src={currentProduct.image.startsWith('http') ? currentProduct.image : `${API_BASE}${currentProduct.image}`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-surface-300"><ImageIcon className="w-8 h-8" /></div>
-                      )}
+                    <div className="flex w-24 shrink-0 flex-col gap-2">
+                      <div className="h-24 w-24 overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-sm">
+                        {currentProduct.image ? (
+                          <img src={currentProduct.image.startsWith('http') ? currentProduct.image : `${API_BASE}${currentProduct.image}`} className="h-full w-full object-cover" />
+                        ) : <div className="flex h-full w-full items-center justify-center text-surface-300"><ImageIcon className="h-8 w-8" /></div>}
+                      </div>
+                      <span className="text-center text-[10px] font-bold text-surface-400">{(currentProduct.images || []).length} image{(currentProduct.images || []).length === 1 ? '' : 's'}</span>
                     </div>
                     <div className="flex-1 w-full space-y-3">
                       <div className="flex flex-col sm:flex-row gap-3">
@@ -466,6 +476,7 @@ export default function ProductsTab() {
                           <input
                             type="file"
                             id="imgUpload"
+                            multiple
                             accept="image/*"
                             onChange={handleFileChange}
                             className="hidden"
@@ -482,13 +493,30 @@ export default function ProductsTab() {
                           <input
                             type="text"
                             value={currentProduct.image}
-                            onChange={e => setCurrentProduct({ ...currentProduct, image: e.target.value })}
+                            onChange={e => {
+                              const image = e.target.value;
+                              const images = image ? [image, ...(currentProduct.images || []).filter(item => item !== currentProduct.image && item !== image)] : (currentProduct.images || []).filter(item => item !== currentProduct.image);
+                              setCurrentProduct({ ...currentProduct, image, images });
+                            }}
                             className="input-field w-full py-3 bg-white"
                             placeholder="Paste Image URL here..."
                           />
                         </div>
                       </div>
-                      <p className="text-[10px] font-semibold tracking-wide text-surface-400 italic">Recommended: Square image format, maximum 2MB</p>
+                      {(currentProduct.images || []).length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {(currentProduct.images || []).map((imageUrl, index) => (
+                            <div key={`${imageUrl}-${index}`} className="group relative h-14 w-14 overflow-hidden rounded-xl border border-surface-200 bg-white">
+                              <img src={imageUrl.startsWith('http') ? imageUrl : `${API_BASE}${imageUrl}`} className="h-full w-full object-cover" />
+                              <button type="button" onClick={() => {
+                                const images = currentProduct.images.filter((_, imageIndex) => imageIndex !== index);
+                                setCurrentProduct({ ...currentProduct, image: images[0] || '', images });
+                              }} className="absolute inset-0 hidden items-center justify-center bg-surface-950/60 text-[10px] font-black text-white group-hover:flex">Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-[10px] font-semibold tracking-wide text-surface-400 italic">Upload multiple images. The first image is the main product photo.</p>
                     </div>
                   </div>
                 </div>

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "postinstall": "prisma generate",
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push",
     "db:seed": "node src/seed.js",

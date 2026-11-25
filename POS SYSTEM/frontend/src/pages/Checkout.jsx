@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, getPublicTenant, trackVisit, validatePromo } from '../services/api';
@@ -127,6 +127,9 @@ export default function Checkout() {
       return JSON.parse(localStorage.getItem(`saved_checkout_contact_${user.id}`) || 'null');
     } catch { return null; }
   });
+  const [showSaveContactPrompt, setShowSaveContactPrompt] = useState(false);
+  const [pendingContact, setPendingContact] = useState(null);
+  const saveContactResolver = useRef(null);
   const [customerName, setCustomerName] = useState(() => savedContact?.name || user?.name || '');
   const [customerPhone, setCustomerPhone] = useState(() => savedContact?.phone || user?.phone || '');
   const [customerEmail, setCustomerEmail] = useState(() => savedContact?.email || user?.email || '');
@@ -315,10 +318,17 @@ export default function Checkout() {
       }
       localStorage.setItem(lastOrderKey, order.orderNumber);
 
-      if (user && savedContactKey && window.confirm('Would you like to save your name, phone number, and email for your next order?')) {
+      if (user && savedContactKey) {
         const contact = { name: customerName.trim(), phone: customerPhone, email: customerEmail.trim() };
-        localStorage.setItem(savedContactKey, JSON.stringify(contact));
-        setSavedContact(contact);
+        const shouldSave = await new Promise(resolve => {
+          saveContactResolver.current = resolve;
+          setPendingContact(contact);
+          setShowSaveContactPrompt(true);
+        });
+        if (shouldSave) {
+          localStorage.setItem(savedContactKey, JSON.stringify(contact));
+          setSavedContact(contact);
+        }
       }
 
       await refreshUser();
@@ -327,6 +337,15 @@ export default function Checkout() {
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to place order.');
     } finally { setSubmitting(false); }
+  };
+
+  const closeSaveContactPrompt = (shouldSave) => {
+    setShowSaveContactPrompt(false);
+    setPendingContact(null);
+    if (saveContactResolver.current) {
+      saveContactResolver.current(shouldSave);
+      saveContactResolver.current = null;
+    }
   };
 
   const calculateDeliveryFee = (lat, lng) => {
@@ -354,9 +373,28 @@ export default function Checkout() {
 
   return (
     <div className="min-h-screen bg-surface-50 pb-8" style={{ '--primary-custom': brandingColor }}>
+      {showSaveContactPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface-950/45 p-4 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="save-contact-title">
+          <div className="w-full max-w-sm overflow-hidden rounded-[2rem] border border-pink-100 bg-white shadow-2xl animate-scale-in">
+            <div className="bg-gradient-to-br from-pink-500 to-fuchsia-600 px-6 pb-7 pt-6 text-white">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-2xl ring-1 ring-white/30">♡</div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-100">Faster checkout next time</p>
+              <h2 id="save-contact-title" className="mt-1 font-heading text-2xl font-black">Save your information?</h2>
+            </div>
+            <div className="p-6">
+              <p className="leading-relaxed text-surface-600">Would you like to save your name, phone number, and email for your next order?</p>
+              {pendingContact && <div className="mt-4 rounded-2xl bg-pink-50 px-4 py-3 text-sm font-semibold text-pink-700">Your details stay saved on this device.</div>}
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => closeSaveContactPrompt(false)} className="rounded-2xl border border-surface-200 px-4 py-3.5 text-sm font-black uppercase tracking-widest text-surface-600 transition hover:bg-surface-50">Not now</button>
+                <button type="button" onClick={() => closeSaveContactPrompt(true)} className="rounded-2xl bg-primary-600 px-4 py-3.5 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700">Save details</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-surface-200/50">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <Link to={cartLink} className="text-surface-500 hover:text-surface-700 font-medium text-sm">← {t('back')}</Link>
+          <Link to={cartLink} className="back-button"><span aria-hidden="true">←</span> {t('back')}</Link>
           <h1 className="font-heading font-bold text-lg text-surface-900">{t('checkout')}</h1>
           <div className="w-16" />
         </div>

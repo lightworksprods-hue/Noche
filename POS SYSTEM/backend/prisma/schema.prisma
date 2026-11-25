@@ -106,6 +106,7 @@ model Product {
   description String?
   price       Float
   image       String?
+  images      Json?          // Additional product image URLs for the customer gallery
   stock       Int      @default(0)
   available   Boolean  @default(true)
   pointsCost  Int?
@@ -212,6 +213,8 @@ model Order {
   lastRiderLat       Float?
   lastRiderLng       Float?
   paymentReference   String?
+  paymentVerifiedAt  DateTime?
+  fullyPaidAt         DateTime?
   notes              String?
   cancellationReason String?
   cashierId          Int?
