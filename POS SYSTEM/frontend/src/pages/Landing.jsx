@@ -396,12 +396,6 @@ export default function Landing() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 shadow-sm transition-transform hover:scale-[1.02]"
               aria-label="Visit Mona's Pang Noche Buena on Facebook"
             >
-              <img
-                src={tenant?.logo ? getAbsoluteUrl(tenant.logo) : '/logo.png'}
-                className="h-6 w-6 rounded-md object-cover"
-                alt={tenant?.name || 'Store logo'}
-                onError={(e) => { e.currentTarget.src = '/logo.png'; }}
-              />
               <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 text-[#1877F2]" fill="currentColor">
                 <path d="M14 8h3V4h-3c-2.76 0-5 2.24-5 5v3H6v4h3v5h4v-5h3l1-4h-4V9c0-.55.45-1 1-1Z" />
               </svg>
