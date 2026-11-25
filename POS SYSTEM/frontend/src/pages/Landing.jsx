@@ -4,7 +4,7 @@ import { getOrder, getOrderHistory, getPublicTenant, trackVisit } from '../servi
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
-import { Ban, Gem, Rocket, Coffee, Utensils } from 'lucide-react';
+import { Ban, Rocket, Coffee, Utensils } from 'lucide-react';
 
 export default function Landing() {
   const [activeOrders, setActiveOrders] = useState([]);
@@ -277,9 +277,6 @@ export default function Landing() {
           <div className="inline-flex flex-col items-center gap-2 mb-8 animate-fade-in">
             <div className="bg-emerald-500/10 border border-emerald-500/20 px-8 py-3 rounded-[2rem] text-emerald-400 font-bold text-lg backdrop-blur-md shadow-xl shadow-emerald-500/10 flex flex-col items-center">
               <span className="text-white">Welcome back, <span className="text-emerald-400">{user.name}</span>!</span>
-            </div>
-            <div className="text-[10px] text-emerald-500/60 font-black uppercase tracking-[0.3em] mt-2 flex items-center gap-1.5">
-              <Gem className="w-3 h-3 text-emerald-500/60" /> {Math.floor(user.points)} Loyalty Points Available
             </div>
           </div>
         )}
