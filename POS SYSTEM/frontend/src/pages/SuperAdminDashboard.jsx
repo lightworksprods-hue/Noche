@@ -29,6 +29,7 @@ export default function SuperAdminDashboard() {
   const [editSaRewards, setEditSaRewards] = useState(false);
   const [editSaPromo, setEditSaPromo] = useState(false);
   const [editFeatureLocks, setEditFeatureLocks] = useState({});
+  const [editProductLimit, setEditProductLimit] = useState(50);
   const [updatingName, setUpdatingName] = useState(false);
   const [formData, setFormData] = useState({ name: '', slug: '', primaryColor: '#ec4899', adminName: '', adminEmail: '', adminPassword: '' });
   const [saving, setSaving] = useState(false);
@@ -97,7 +98,8 @@ export default function SuperAdminDashboard() {
         saDeliveryDisabled: editSaDelivery,
         saRewardsDisabled: editSaRewards,
         saPromoDisabled: editSaPromo,
-        adminFeatureLocks: editFeatureLocks
+        adminFeatureLocks: editFeatureLocks,
+        productLimit: editProductLimit
       });
       setTenantToEdit(null);
       setEditName('');
@@ -106,6 +108,7 @@ export default function SuperAdminDashboard() {
       setEditSaRewards(false);
       setEditSaPromo(false);
       setEditFeatureLocks({});
+      setEditProductLimit(50);
       loadTenants();
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to update store settings');
@@ -261,6 +264,7 @@ export default function SuperAdminDashboard() {
                           setEditSaRewards(tenant.saRewardsDisabled || false);
                           setEditSaPromo(tenant.saPromoDisabled || false);
                           setEditFeatureLocks(tenant.adminFeatureLocks || {});
+                          setEditProductLimit(Number.isFinite(Number(tenant.productLimit)) ? tenant.productLimit : 50);
                           setTenantToEdit(tenant);
                         }}
                         className="font-black text-[10px] uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-all mr-3"
@@ -416,7 +420,7 @@ export default function SuperAdminDashboard() {
       {/* Edit Tenant Settings Modal */}
       {tenantToEdit && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-          <div className="bg-slate-900 w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl border border-white/10 animate-scale-in" onClick={e => e.stopPropagation()}>
+          <div className="bg-slate-900 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-[40px] shadow-2xl border border-white/10 animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="p-10">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-black text-white tracking-tight">Edit Tenant Settings</h3>
@@ -454,6 +458,20 @@ export default function SuperAdminDashboard() {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1 font-bold">Maximum Products</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    className="w-full bg-slate-800 border border-white/5 rounded-2xl px-6 py-4 text-sm text-white focus:border-indigo-500 outline-none transition-all font-bold"
+                    value={editProductLimit}
+                    onChange={e => setEditProductLimit(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  />
+                  <p className="mt-2 px-1 text-xs leading-relaxed text-slate-500">Controls how many product records this tenant’s admin can create. Archived products still count toward the limit.</p>
                 </div>
 
                 <div className="flex gap-4">

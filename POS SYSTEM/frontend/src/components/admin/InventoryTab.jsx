@@ -202,7 +202,7 @@ export default function InventoryTab() {
                           <td className="p-4 text-surface-600">{item.category?.name || 'N/A'}</td>
                           <td className="p-4">
                             <span className={`px-2 py-1 rounded text-sm font-bold ${isLow ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-surface-100 text-surface-700'}`}>
-                              {item.stock} units
+                              {item.stock} {item.unit || 'pcs'}
                             </span>
                             {isLow && <span className="ml-2 text-xs text-red-500 font-bold">Low Stock!</span>}
                           </td>
@@ -374,11 +374,11 @@ export default function InventoryTab() {
               <div>
                 <p className="text-sm font-medium text-surface-500 mb-2">Product Name</p>
                 <p className="text-lg font-bold text-surface-900">{restockItem.name}</p>
-                <p className="text-sm text-surface-400 mt-1">Current Stock: <span className="font-bold text-surface-700">{restockItem.stock}</span></p>
+                <p className="text-sm text-surface-400 mt-1">Current Stock: <span className="font-bold text-surface-700">{restockItem.stock} {restockItem.unit || 'pcs'}</span></p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-surface-700 mb-2">How many units are you adding?</label>
+                <label className="block text-sm font-medium text-surface-700 mb-2">How many {restockItem.unit || 'pcs'} are you adding?</label>
                 <input
                   type="number"
                   min="1"
@@ -436,7 +436,7 @@ export default function InventoryTab() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-surface-700 mb-2">Quantity Wasted (units)</label>
+                <label className="block text-sm font-medium text-surface-700 mb-2">Quantity Wasted ({wasteItem.unit || 'pcs'})</label>
                 <input
                   type="number"
                   min="1"

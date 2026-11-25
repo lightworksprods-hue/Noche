@@ -428,17 +428,32 @@ router.get('/products', authenticate, authorize('admin'), async (req, res) => {
 
 router.post('/products', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, description, price, costPrice, image, images, categoryId, stock, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
+    const { name, description, price, costPrice, image, images, categoryId, stock, unit, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
     if (!name || !price || !categoryId) {
       return res.status(400).json({ success: false, message: 'Name, price, and category are required.' });
     }
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: req.tenantId },
+      select: { productLimit: true }
+    });
+    const productLimit = tenant?.productLimit ?? 50;
+    const productCount = await prisma.product.count({ where: { tenantId: req.tenantId } });
+    if (productCount >= productLimit) {
+      return res.status(403).json({
+        success: false,
+        code: 'PRODUCT_LIMIT_REACHED',
+        message: `Product limit reached (${productLimit}). Please contact your administrator to increase the limit.`
+      });
+    }
+
     const product = await prisma.product.create({
       data: {
         tenantId: req.tenantId,
         name, description, price: parseFloat(price), image,
         images: Array.isArray(images) && images.length > 0 ? images : null,
         costPrice: costPrice ? parseFloat(costPrice) : 0,
-        categoryId: parseInt(categoryId), stock: parseInt(stock) || 100,
+        categoryId: parseInt(categoryId), stock: parseInt(stock) || 100, unit: unit || 'pcs',
         available: available !== false,
         pointsCost: pointsCost ? parseInt(pointsCost) : null,
         isCombo: isCombo || false,
@@ -471,7 +486,7 @@ router.post('/products', authenticate, authorize('admin'), async (req, res) => {
 
 router.put('/products/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, description, price, costPrice, image, images, categoryId, stock, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
+    const { name, description, price, costPrice, image, images, categoryId, stock, unit, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
 
     // Handle addons: Delete old ones and create new ones (sync)
     if (addons) {
@@ -491,6 +506,7 @@ router.put('/products/:id', authenticate, authorize('admin'), async (req, res) =
         image, images: images !== undefined ? (Array.isArray(images) && images.length > 0 ? images : null) : undefined,
         categoryId: categoryId ? parseInt(categoryId) : undefined,
         stock: stock !== undefined ? parseInt(stock) : undefined,
+        unit: unit !== undefined ? String(unit).trim() || 'pcs' : undefined,
         available,
         pointsCost: pointsCost !== undefined ? (pointsCost ? parseInt(pointsCost) : null) : undefined,
         isCombo: isCombo !== undefined ? isCombo : undefined,
@@ -666,7 +682,7 @@ router.get('/inventory', authenticate, authorize('admin'), async (req, res) => {
   try {
     const products = await prisma.product.findMany({
       where: { tenantId: req.tenantId },
-      select: { id: true, name: true, stock: true, available: true, category: { select: { name: true } } },
+      select: { id: true, name: true, stock: true, unit: true, available: true, category: { select: { name: true } } },
       orderBy: { stock: 'asc' }
     });
     res.json({ success: true, data: products });
@@ -843,7 +859,7 @@ router.post('/inventory/:id/restock', authenticate, authorize('admin'), async (r
       }
     });
     await prisma.auditLog.create({
-      data: { tenantId: req.tenantId, userId: req.user.id, action: 'restock_product', entityType: 'product', entityId: String(product.id), details: `Added ${quantity} units to ${product.name}` }
+      data: { tenantId: req.tenantId, userId: req.user.id, action: 'restock_product', entityType: 'product', entityId: String(product.id), details: `Added ${quantity} ${product.unit || 'pcs'} to ${product.name}` }
     });
     res.json({ success: true, data: product });
   } catch (error) {
@@ -1012,6 +1028,7 @@ router.get('/settings', authenticate, authorize('admin'), async (req, res) => {
       settingsMap.deliveryDisabled = tenant.deliveryDisabled;
       settingsMap.saDeliveryDisabled = tenant.saDeliveryDisabled;
       settingsMap.saRewardsDisabled = tenant.saRewardsDisabled;
+      settingsMap.product_limit = tenant.productLimit;
     }
 
     res.json({ success: true, data: settingsMap });

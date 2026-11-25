@@ -8,6 +8,7 @@ export default function ProductsTab() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [customBadges, setCustomBadges] = useState([]);
+  const [productLimit, setProductLimit] = useState(50);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -126,6 +127,7 @@ export default function ProductsTab() {
       setProducts(prodRes.data.data);
       setCategories(catRes.data.data);
       setRawIngredients(ingRes.data.data || []);
+      setProductLimit(Number(settingsRes.data?.data?.product_limit ?? 50));
 
       if (settingsRes.data?.data?.custom_badges) {
         let parsed = settingsRes.data.data.custom_badges;
@@ -204,7 +206,11 @@ export default function ProductsTab() {
   };
 
   const handleAdd = () => {
-    setCurrentProduct({ name: '', description: '', price: '', costPrice: '', pointsCost: '', image: '', images: [], categoryId: '', stock: 0, available: true, isCombo: false, tags: '', sizes: [] });
+    if (products.length >= productLimit) {
+      alert(`Product limit reached (${productLimit}). Please contact your administrator to increase the limit.`);
+      return;
+    }
+    setCurrentProduct({ name: '', description: '', price: '', costPrice: '', pointsCost: '', image: '', images: [], categoryId: '', stock: 0, unit: 'pcs', available: true, isCombo: false, tags: '', sizes: [] });
     setComboOptions([]);
     setProductRecipes([]);
     setIsEditing(true);
@@ -283,7 +289,7 @@ export default function ProductsTab() {
         setSuccessMessage('');
       }, 3000);
     } catch (error) {
-      alert('Failed to save product');
+      alert(error.response?.data?.message || 'Failed to save product');
     }
   };
 
@@ -350,7 +356,12 @@ export default function ProductsTab() {
   return (
     <div className="">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-        <h2 className="font-heading text-2xl font-bold text-surface-900">Products & Menu</h2>
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-surface-900">Products & Menu</h2>
+          <p className={`mt-1 text-xs font-bold ${products.length >= productLimit ? 'text-red-600' : 'text-surface-500'}`}>
+            {products.length} of {productLimit} products used
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:flex gap-2 sm:gap-3 w-full sm:w-auto">
           <button
             onClick={handleExportCSV}
@@ -364,7 +375,7 @@ export default function ProductsTab() {
           >
             {statusFilter === 'archived' ? <><ClipboardList className="w-4 h-4" /> View Active</> : <><FolderArchive className="w-4 h-4" /> View Archives</>}
           </button>
-          <button onClick={handleAdd} className="w-full sm:w-auto btn-primary py-2 px-4 shadow-md">
+          <button onClick={handleAdd} disabled={products.length >= productLimit} className="w-full sm:w-auto btn-primary py-2 px-4 shadow-md disabled:cursor-not-allowed disabled:opacity-50" title={products.length >= productLimit ? 'Product limit reached' : 'Add product'}>
             + Add Product
           </button>
         </div>
@@ -429,6 +440,25 @@ export default function ProductsTab() {
                         onChange={e => setCurrentProduct({ ...currentProduct, description: e.target.value })}
                         className="input-field w-full h-20 resize-none bg-white"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-surface-700 mb-1">Stock Unit</label>
+                      <select
+                        value={currentProduct.unit || 'pcs'}
+                        onChange={e => setCurrentProduct({ ...currentProduct, unit: e.target.value })}
+                        className="input-field w-full bg-white"
+                      >
+                        <option value="pcs">Pieces (pcs)</option>
+                        <option value="kg">Kilograms (kg)</option>
+                        <option value="g">Grams (g)</option>
+                        <option value="packs">Packs</option>
+                        <option value="boxes">Boxes</option>
+                        <option value="bottles">Bottles</option>
+                        <option value="trays">Trays</option>
+                        <option value="bags">Bags</option>
+                        <option value="liters">Liters</option>
+                        <option value="other">Other</option>
+                      </select>
                     </div>
                   </div>
                 </div>

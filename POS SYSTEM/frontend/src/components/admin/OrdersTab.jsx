@@ -269,7 +269,7 @@ export default function OrdersTab() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {['all', 'pending', 'booked', 'preparing', 'ready', 'completed', 'cancelled'].map(s => (
+            {['all', 'booked', 'ready', 'completed', 'cancelled'].map(s => (
               <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={`flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${status === s ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20' : 'bg-white text-surface-500 border border-surface-200 hover:bg-surface-50'}`}>
                 {s}
               </button>
@@ -386,20 +386,15 @@ export default function OrdersTab() {
                     )}
                     {order.status === 'cancelled' && (
                       <div className="mb-2 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleRefundDecision(order, 'refunded')}
-                          className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${order.refundStatus === 'refunded' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
-                        >
-                          Refunded
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRefundDecision(order, 'not_refunded')}
-                          className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${order.refundStatus === 'not_refunded' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                        >
-                          Not Refunded
-                        </button>
+                        {!['refunded', 'not_refunded', 'not_required'].includes(order.refundStatus) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRefundDecision(order, 'refunded')}
+                            className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-100"
+                          >
+                            Refunded
+                          </button>
+                        )}
                       </div>
                     )}
                     {order.status === 'cancelled' && (
@@ -524,22 +519,15 @@ export default function OrdersTab() {
                   <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-red-500">
                     Refund: {order.refundStatus === 'refunded' ? 'Refunded' : order.refundStatus === 'not_refunded' || order.refundStatus === 'not_required' ? 'Not Refunded' : 'Pending Admin Decision'}
                   </p>
-                  <div className="flex gap-2">
+                  {!['refunded', 'not_refunded', 'not_required'].includes(order.refundStatus) && (
                     <button
                       type="button"
                       onClick={() => handleRefundDecision(order, 'refunded')}
-                      className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase ${order.refundStatus === 'refunded' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
+                      className="w-full rounded-lg bg-emerald-100 py-2 text-[10px] font-black uppercase text-emerald-700 hover:bg-emerald-200"
                     >
                       Refunded
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRefundDecision(order, 'not_refunded')}
-                      className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase ${order.refundStatus === 'not_refunded' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                    >
-                      Not Refunded
-                    </button>
-                  </div>
+                  )}
                 </div>
               )}
               {order.status === 'cancelled' && (

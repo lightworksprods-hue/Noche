@@ -82,10 +82,13 @@ router.post('/tenants', async (req, res) => {
 // PATCH /api/superadmin/tenants/:id
 router.patch('/tenants/:id', async (req, res) => {
   try {
-    const { active, name, primaryColor, saDeliveryDisabled, saRewardsDisabled, saPromoDisabled, adminFeatureLocks } = req.body;
+    const { active, name, primaryColor, saDeliveryDisabled, saRewardsDisabled, saPromoDisabled, adminFeatureLocks, productLimit } = req.body;
     const tenant = await prisma.tenant.update({
       where: { id: parseInt(req.params.id) },
-      data: { active, name, primaryColor, saDeliveryDisabled, saRewardsDisabled, saPromoDisabled, adminFeatureLocks }
+      data: {
+        active, name, primaryColor, saDeliveryDisabled, saRewardsDisabled, saPromoDisabled, adminFeatureLocks,
+        productLimit: productLimit === undefined ? undefined : Math.max(0, parseInt(productLimit, 10) || 0)
+      }
     });
     res.json({ success: true, data: tenant });
   } catch (error) {
