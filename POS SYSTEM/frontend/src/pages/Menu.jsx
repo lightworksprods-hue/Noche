@@ -1,0 +1,1677 @@
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { getProducts, changePassword, getOrder, trackVisit, getPublicPackages, getOrderHistory, getMyPackageBookings, getBookingAvailability, createPackageBooking } from '../services/api';
+import { useCart } from '../context/CartContext';
+import { useSocket } from '../context/SocketContext';
+import { formatCurrency, formatDate, unlockAudio, getProductBasePrice } from '../utils/helpers';
+import { useAuth } from '../context/AuthContext';
+import { useDynamicBranding } from '../hooks/useDynamicBranding';
+import useStoreOperationRealtime from '../hooks/useStoreOperationRealtime';
+import { applyTheme, clearTheme } from '../utils/theme';
+import SeasonalEffects from '../components/SeasonalEffects';
+import LocationPicker from '../components/LocationPicker';
+import { ArrowLeft, Bean, Lock, ScrollText, LogOut, Utensils, Package, Star, Flame, CheckCircle, Ban, Wheat, AlertCircle, Leaf, Info, Gift, Tag, Coffee, Store, Sparkles, ChevronDown, CalendarDays, MapPin, Phone, FileText } from 'lucide-react';
+
+const COMMON_EVENT_TYPES = ['Birthday', 'Wedding', 'Corporate event', 'School event', 'Festival or market', 'Private gathering', 'Other'];
+const COFFEE_DRINKS = ['Americano', 'Cafe Latte', 'Spanish Latte', 'Cafe Mocha', 'Caramel Macchiato'];
+const NON_COFFEE_DRINKS = ['Strawberry Latte', 'Choco Latte (hot/iced)', 'Blueberry Latte', 'Matcha Latte'];
+const PACKAGE_DRINK_LIMITS = {
+  'The Curated': { coffee: 2, nonCoffee: 1 },
+  'The Signature Pour': { coffee: 3, nonCoffee: 1 },
+  'The Elevated Pour': { coffee: 4, nonCoffee: 1 },
+  'The Grand Pour': { coffee: 4, nonCoffee: 2 }
+};
+const getPackageDrinkLimits = (eventPackage) => PACKAGE_DRINK_LIMITS[eventPackage?.name] || { coffee: 0, nonCoffee: 0 };
+const getPackagePax = (eventPackage) => eventPackage?.features?.split(',').map(item => item.trim()).find(item => /pax/i.test(item));
+const isBookingFullyPaid = (booking) => booking?.paymentStatus === 'paid' || (booking?.paymentStatus === 'verified' && (booking?.paymentMode === 'full_payment' || booking?.paymentMethod === 'cash'));
+
+const getOptimizedImageUrl = (imageUrl) => {
+  if (!imageUrl) return null;
+
+  const url = String(imageUrl);
+
+  if (url.startsWith('http')) {
+    if (url.includes('images.unsplash.com')) {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}auto=format&fit=crop&w=600&q=70`;
+    }
+
+    if (url.includes('cloudinary.com')) {
+      return url.replace('/upload/', '/upload/w_600,c_fill,q_auto,f_auto/');
+    }
+
+    if (url.includes('imgix.net')) {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}w=600&q=70&auto=format`;
+    }
+  }
+
+  return url;
+};
+
+export default function Menu() {
+  const { user, logoutUser } = useAuth();
+  const isCustomer = user && user.role === 'customer';
+  const [categories, setCategories] = useState([]);
+  const [tenantName, setTenantName] = useState('Our Menu');
+  const [branding, setBranding] = useState(null);
+  useStoreOperationRealtime(branding, setBranding);
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [showRewards, setShowRewards] = useState(false);
+  const [showPackages, setShowPackages] = useState(false);
+  const [showPackageTerms, setShowPackageTerms] = useState(false);
+  const [bookingPackage, setBookingPackage] = useState(null);
+  const [bookingForm, setBookingForm] = useState({ eventType: '', otherEventType: '', venue: '', venueLat: null, venueLng: null, eventDate: '', customerPhone: '', locationGuide: '', notes: '', coffeeSelections: [], nonCoffeeSelections: [], paymentMethod: 'cash', paymentMode: 'full_payment' });
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState('');
+  const [bookingErrors, setBookingErrors] = useState({});
+  const [bookingSuccess, setBookingSuccess] = useState(null);
+  const [showBookingMap, setShowBookingMap] = useState(false);
+  const [bookingEventOpen, setBookingEventOpen] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [orderHistory, setOrderHistory] = useState([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyMeta, setHistoryMeta] = useState({ page: 1, total: 0, totalPages: 0 });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [usualOrder, setUsualOrder] = useState(null);
+  const [usualOrderDismissed, setUsualOrderDismissed] = useState(false);
+  const [eventPackages, setEventPackages] = useState([]);
+  const [bookedEventSlots, setBookedEventSlots] = useState([]);
+  const [addOpts, setAddOpts] = useState({ size: '', flavor: '', addons: [], comboChoices: null });
+  const [optionError, setOptionError] = useState(false);
+  const [comboStep, setComboStep] = useState(1); // 1 or 2
+  const { addToCart, getItemCount, items, getSubtotal, clearCart } = useCart();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const openPackages = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('packages', '1');
+    setSearchParams(nextParams);
+    setShowPackages(true);
+  };
+
+  const closePackages = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('packages');
+    setSearchParams(nextParams, { replace: true });
+    setShowPackages(false);
+  };
+
+  const clearBookingError = (field) => setBookingErrors(current => ({ ...current, [field]: false }));
+
+  const toggleBookingDrink = (field, drink, limit) => {
+    setBookingForm(current => {
+      const selected = current[field] || [];
+      const next = selected.includes(drink)
+        ? selected.filter(item => item !== drink)
+        : selected.length < limit ? [...selected, drink] : selected;
+      return { ...current, [field]: next };
+    });
+    clearBookingError(field);
+  };
+
+  useEffect(() => {
+    setShowPackages(false);
+  }, [searchParams]);
+
+  useEffect(() => { loadProducts(); }, [searchParams.get('tenant')]);
+
+  useEffect(() => {
+    if (!isCustomer) return;
+    getBookingAvailability()
+      .then(response => setBookedEventSlots(response.data?.data || []))
+      .catch(error => console.error('Failed to load booking availability:', error));
+  }, [isCustomer]);
+
+  const isBookedEventSlot = (value) => {
+    if (!value) return false;
+    const selected = new Date(value);
+    selected.setSeconds(0, 0);
+    return bookedEventSlots.some(slot => {
+      const booked = new Date(slot);
+      booked.setSeconds(0, 0);
+      return booked.getTime() === selected.getTime();
+    });
+  };
+
+  const updateBookingDateTime = (part, value) => {
+    const [currentDate = '', currentTime = ''] = bookingForm.eventDate.split('T');
+    const date = part === 'date' ? value : currentDate;
+    const time = part === 'time' ? value : currentTime;
+    const nextValue = date && time ? `${date}T${time}` : `${date}${date && time === '' ? 'T' : ''}${time}`;
+    if (date && time && isBookedEventSlot(nextValue)) {
+      setBookingForm({ ...bookingForm, eventDate: `${date}T` });
+      setBookingErrors(current => ({ ...current, eventDate: true }));
+      setBookingMessage('That date and time is already booked. Please choose another schedule.');
+      return;
+    }
+    setBookingForm({ ...bookingForm, eventDate: nextValue });
+    clearBookingError('eventDate');
+    if (date && time) setBookingMessage('');
+  };
+
+  useEffect(() => {
+    const reorderNumber = searchParams.get('reorder');
+    if (reorderNumber) {
+      handleReorder(reorderNumber);
+    }
+  }, [searchParams]);
+
+  const handleReorder = async (orderNumber) => {
+    try {
+      const res = await getOrder(orderNumber);
+      if (res.data && res.data.data && res.data.data.items) {
+        const orderItems = res.data.data.items;
+        for (const item of orderItems) {
+          const productObj = {
+            id: item.productId,
+            name: item.productName,
+            price: item.productPrice,
+            stock: 999, // default to high so cart accepts it
+          };
+
+          const options = {
+            size: item.size || '',
+            flavor: item.flavor || '',
+            addons: item.addons ? JSON.parse(item.addons) : [],
+            comboChoices: item.comboChoices ? (typeof item.comboChoices === 'string' ? JSON.parse(item.comboChoices) : item.comboChoices) : null,
+            isRedemption: item.isRedemption || false
+          };
+
+          for (let i = 0; i < item.quantity; i++) {
+            addToCart(productObj, options);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to reorder:', e);
+    } finally {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('reorder');
+      setSearchParams(newParams, { replace: true });
+    }
+  };
+
+  const loadProducts = async () => {
+    setLoading(true);
+    try {
+      const res = await getProducts();
+      setCategories(res.data.data || []);
+      if (res.data.tenantName) setTenantName(res.data.tenantName);
+      if (res.data.branding) {
+        setBranding(res.data.branding);
+        if (res.data.branding.primaryColor) {
+          applyTheme(res.data.branding.primaryColor);
+        }
+      }
+
+      try {
+        let tenantSlug = searchParams.get('tenant');
+        if (!tenantSlug) {
+          const hostname = window.location.hostname;
+          const isPlatformDomain = hostname.includes('vercel.app') || hostname.includes('onrender.com') || hostname.includes('workers.dev');
+          if (!isPlatformDomain && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+            tenantSlug = hostname.split('.')[0];
+          } else {
+            tenantSlug = 'project-million';
+          }
+        }
+        const pkgRes = await getPublicPackages(tenantSlug);
+        setEventPackages(pkgRes.data.data || []);
+      } catch (err) {
+        console.error('Failed to load packages:', err);
+      }
+    } catch (e) {
+      console.error('Failed to load products:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cleanup theme on unmount
+  useEffect(() => {
+    return () => clearTheme();
+  }, []);
+
+  const handleProductClick = (product) => {
+    if (product.isCombo) {
+      setComboStep(1);
+      setAddOpts({ size: '', flavor: '', addons: [], comboChoices: { group1: null, group2: null } });
+    } else {
+      setAddOpts({ size: null, flavor: '', addons: [], comboChoices: null });
+    }
+    setOptionError(false);
+    setSelectedProduct(product);
+    window.history.pushState({ modalOpen: 'product' }, '');
+  };
+
+  const handleBookNow = (pkg) => {
+    setBookingPackage(pkg);
+    setBookingMessage('');
+    setBookingErrors({});
+    setBookingEventOpen(false);
+    setBookingForm({ eventType: '', otherEventType: '', venue: '', venueLat: null, venueLng: null, eventDate: '', customerPhone: '', locationGuide: '', notes: '', coffeeSelections: [], nonCoffeeSelections: [], paymentMethod: 'cash', paymentMode: 'full_payment' });
+    setShowBookingMap(false);
+    closePackages();
+  };
+
+  const handleBookingSubmit = async (event) => {
+    event.preventDefault();
+    const errors = {};
+    const drinkLimits = getPackageDrinkLimits(bookingPackage);
+    if (!bookingForm.eventType) errors.eventType = true;
+    if (bookingForm.eventType === 'Other' && !bookingForm.otherEventType.trim()) errors.otherEventType = true;
+    if (!bookingForm.venue.trim()) errors.venue = true;
+    if (!bookingForm.eventDate || !/T\d{2}:\d{2}$/.test(bookingForm.eventDate)) errors.eventDate = true;
+    if (!/^\d{11}$/.test(bookingForm.customerPhone)) errors.customerPhone = true;
+    if (!bookingForm.paymentMethod) errors.paymentMethod = true;
+    if (!bookingForm.paymentMode) errors.paymentMode = true;
+    if (bookingForm.coffeeSelections.length !== drinkLimits.coffee) errors.coffeeSelections = true;
+    if (bookingForm.nonCoffeeSelections.length !== drinkLimits.nonCoffee) errors.nonCoffeeSelections = true;
+    if (Object.keys(errors).length > 0) {
+      setBookingErrors(errors);
+      setBookingMessage('Please complete the highlighted fields before submitting, including your drink selections.');
+      setTimeout(() => document.querySelector('[data-booking-error="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+      return;
+    }
+    setBookingSubmitting(true);
+    setBookingMessage('');
+    try {
+      const drinkNotes = `Drink selections:\nCoffee: ${bookingForm.coffeeSelections.join(', ')}\nNon-coffee: ${bookingForm.nonCoffeeSelections.join(', ')}`;
+      await createPackageBooking({
+        packageId: bookingPackage.id,
+        customerName: user.name,
+        customerEmail: user.email,
+        ...bookingForm,
+        notes: [bookingForm.notes.trim(), drinkNotes].filter(Boolean).join('\n\n'),
+        eventType: bookingForm.eventType === 'Other' ? bookingForm.otherEventType : bookingForm.eventType,
+        paymentMethod: bookingForm.paymentMethod
+      });
+      setBookingPackage(null);
+      setBookingSuccess({ packageName: bookingPackage.name, paymentMethod: bookingForm.paymentMethod });
+    } catch (error) {
+      const message = error.response?.data?.message || 'We could not send your booking request. Please try again.';
+      if (message.toLowerCase().includes('already booked')) setBookingErrors(current => ({ ...current, eventDate: true }));
+      setBookingMessage(message);
+    } finally {
+      setBookingSubmitting(false);
+    }
+  };
+
+  const closeProductModal = () => {
+    setSelectedProduct(null);
+    if (window.history.state && window.history.state.modalOpen === 'product') {
+      window.history.back();
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (selectedProduct) {
+        setSelectedProduct(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedProduct]);
+
+  const brandingColor = branding?.primaryColor || '#ec4899';
+  const itemCount = getItemCount();
+  const bookingDrinkLimits = getPackageDrinkLimits(bookingPackage);
+
+  const { joinRoom, leaveRoom, connected, emit } = useSocket();
+
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (branding?.id) {
+      joinRoom('kiosk', branding.id);
+      emit('join_visitor', branding.id);
+      return () => {
+        leaveRoom('kiosk', branding.id);
+        emit('leave_visitor', branding.id);
+      };
+    }
+  }, [branding?.id, connected]);
+
+  // Track unique visit per session
+  useEffect(() => {
+    const slug = new URLSearchParams(window.location.search).get('tenant') || 'project-million';
+    const key = `visited_${slug}`;
+    if (!sessionStorage.getItem(key)) {
+      trackVisit(slug).catch(() => { });
+      sessionStorage.setItem(key, '1');
+    }
+  }, []);
+
+  const handleAddToCart = (product) => {
+    // Require option selection if product has options
+    if (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0 && !addOpts.size) {
+      setOptionError(true);
+      return;
+    }
+
+    // Resolve size-specific price for cart
+    let sizePrice = null;
+    if (addOpts.size && product.sizes && Array.isArray(product.sizes)) {
+      const match = product.sizes.find(s => s.name === addOpts.size);
+      if (match) sizePrice = parseFloat(match.price);
+    }
+    addToCart(product, { ...addOpts, sizePrice, isRedemption: product.isRedemption });
+    closeProductModal();
+    setAddOpts({ size: null, flavor: '', addons: [], comboChoices: null });
+    setComboStep(1);
+  };
+
+  const toggleAddon = (addon) => {
+    setAddOpts(prev => ({
+      ...prev,
+      addons: prev.addons.find(a => a.id === addon.id)
+        ? prev.addons.filter(a => a.id !== addon.id)
+        : [...prev.addons, { id: addon.id, name: addon.name, price: addon.price }]
+    }));
+  };
+
+  const getInitials = (name) => {
+    if (!name) return '??';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+
+  useEffect(() => {
+    if (!showHistoryModal) return;
+
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      setHistoryError('');
+      try {
+        const [ordersRes, bookingsRes] = await Promise.all([
+          getOrderHistory({ page: historyPage, limit: 10 }),
+          getMyPackageBookings()
+        ]);
+        const orders = ordersRes.data?.data || [];
+        setHistoryMeta(ordersRes.data?.meta || { page: historyPage, total: 0, totalPages: 0 });
+        const confirmedBookings = (bookingsRes.data?.data || [])
+          .filter(booking => booking.status === 'accepted')
+          .map(booking => ({ ...booking, historyType: 'booking' }));
+        setOrderHistory([...orders, ...confirmedBookings].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      } catch (error) {
+        setHistoryError(error.response?.data?.message || 'Failed to load order history.');
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    loadHistory();
+  }, [showHistoryModal, historyPage]);
+
+  // Suggest a repeated completed order once the current menu is available.
+  useEffect(() => {
+    if (!isCustomer || !user?.id || categories.length === 0) {
+      setUsualOrder(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadUsualOrder = async () => {
+      try {
+        const res = await getOrderHistory({ page: 1, limit: 50 });
+        const completedOrders = (res.data?.data || []).filter(order => order.status === 'completed' && order.items?.length);
+        const orderGroups = new Map();
+
+        completedOrders.forEach(order => {
+          const signature = order.items
+            .map(item => `${item.productId}:${item.quantity}:${item.size || ''}:${item.flavor || ''}:${item.addons || ''}:${item.comboChoices || ''}`)
+            .sort()
+            .join('|');
+          const group = orderGroups.get(signature) || { count: 0, latest: order, items: order.items };
+          group.count += 1;
+          if (new Date(order.createdAt) > new Date(group.latest.createdAt)) group.latest = order;
+          orderGroups.set(signature, group);
+        });
+
+        const repeatedOrder = [...orderGroups.values()]
+          .filter(group => group.count >= 2)
+          .sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return new Date(b.latest.createdAt) - new Date(a.latest.createdAt);
+          })[0];
+
+        if (!cancelled && repeatedOrder) {
+          const menuProducts = categories.flatMap(category => category.products || []);
+          const items = repeatedOrder.items.map(item => {
+            const product = menuProducts.find(menuItem => menuItem.id === item.productId);
+            if (!product || product.available === false || product.stock <= 0) return null;
+
+            let addons = [];
+            try {
+              addons = item.addons ? JSON.parse(item.addons) : [];
+            } catch {
+              addons = [];
+            }
+
+            let comboChoices = null;
+            try {
+              comboChoices = item.comboChoices
+                ? (typeof item.comboChoices === 'string' ? JSON.parse(item.comboChoices) : item.comboChoices)
+                : null;
+            } catch {
+              comboChoices = null;
+            }
+
+            const sizePrice = product.sizes?.find(size => size.name === item.size)?.price;
+            return {
+              product,
+              quantity: item.quantity,
+              options: {
+                size: item.size || '',
+                flavor: item.flavor || '',
+                addons,
+                comboChoices,
+                sizePrice
+              }
+            };
+          }).filter(Boolean);
+
+          setUsualOrder(items.length === repeatedOrder.items.length ? {
+            count: repeatedOrder.count,
+            items
+          } : null);
+        } else if (!cancelled) {
+          setUsualOrder(null);
+        }
+      } catch (error) {
+        if (!cancelled) setUsualOrder(null);
+      }
+    };
+
+    loadUsualOrder();
+    return () => { cancelled = true; };
+  }, [categories, isCustomer, user?.id]);
+
+  const addUsualOrderToCart = () => {
+    usualOrder?.items.forEach(({ product, quantity, options }) => {
+      for (let index = 0; index < quantity; index += 1) {
+        addToCart(product, options);
+      }
+    });
+    setUsualOrderDismissed(true);
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordMessage({ type: 'error', text: 'New passwords do not match.' });
+      return;
+    }
+
+    setPasswordLoading(true);
+    setPasswordMessage({ type: '', text: '' });
+    try {
+      await changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      });
+      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setPasswordMessage({ type: '', text: '' });
+      }, 2000);
+    } catch (error) {
+      setPasswordMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to update password.'
+      });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  // Dynamic favicon & title
+  useDynamicBranding("Mona's Pang Noche Buena", branding?.favicon || '/logo.png');
+
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#831843] gap-6">
+      <img src="/logo.png" alt="Mona's Pang Noche Buena" className="w-24 h-24 rounded-3xl animate-pulse shadow-[0_0_60px_rgba(255,255,255,0.15)]" />
+      <div className="text-center">
+        <h1 className="text-white text-[22px] font-black tracking-tight font-heading">Mona's Pang Noche Buena</h1>
+        <p className="text-white/50 text-[11px] font-semibold tracking-[3px] uppercase mt-1.5">Fresh holiday favorites</p>
+      </div>
+      <div className="flex gap-1.5 mt-2">
+        <span className="w-2 h-2 rounded-full bg-white/70 animate-bounce [animation-delay:0s]"></span>
+        <span className="w-2 h-2 rounded-full bg-white/70 animate-bounce [animation-delay:0.2s]"></span>
+        <span className="w-2 h-2 rounded-full bg-white/70 animate-bounce [animation-delay:0.4s]"></span>
+      </div>
+    </div>
+  );
+
+  const filteredCategories = activeCategory === 'all' ? categories : categories.filter(c => String(c.id) === activeCategory);
+
+  return (
+    <div className="min-h-screen bg-surface-50 pb-24 relative overflow-hidden" style={{ '--primary-custom': brandingColor }}>
+      <SeasonalEffects brandingColor={brandingColor} forcedEffect={branding?.seasonal_effect} />
+      {bookingSuccess && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-fade-in-up">
+          <div className="w-full max-w-sm rounded-[2rem] bg-white p-8 text-center shadow-2xl">
+            <div className="mx-auto flex h-20 w-20 animate-bounce items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle className="h-12 w-12" />
+            </div>
+            <p className="mt-6 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600">Booking request sent</p>
+            <h2 className="mt-2 font-heading text-2xl font-black tracking-tight text-surface-900">Request received!</h2>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-surface-500">Your <span className="font-bold text-surface-700">{bookingSuccess.packageName}</span> booking is now being reviewed.</p>
+            <p className="mt-5 text-xs font-medium text-surface-400">The admin will contact you with the next steps.</p>
+            <button type="button" onClick={() => setBookingSuccess(null)} className="mt-6 w-full rounded-2xl bg-emerald-600 py-3.5 text-sm font-black text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 active:scale-[0.98]">OK</button>
+          </div>
+        </div>
+      )}
+      {branding?.storeClosed && (
+        <div className="bg-red-50 border-b border-red-200 text-red-750 py-3.5 px-4 text-center font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 z-50 sticky top-0 animate-fade-in" style={{ color: '#b91c1c', borderColor: '#fee2e2' }}>
+          <AlertCircle className="w-4 h-4 text-red-650 shrink-0" style={{ color: '#ef4444' }} />
+          <span>We're currently closed. Adding items to cart is temporarily disabled.</span>
+        </div>
+      )}
+      {/* Sticky Top Header Row */}
+      <div className="sticky top-0 z-40 bg-surface-50/90 backdrop-blur-xl border-b border-surface-200/50 shadow-sm transition-all">
+        <div className="max-w-7xl mx-auto p-3 md:p-6 lg:px-8 flex justify-between items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <Link to="/" className="inline-flex items-center gap-1.5 md:gap-2 px-3 py-2 md:px-5 md:py-3 bg-white rounded-full text-[10px] md:text-sm font-bold text-surface-700 shadow-sm border border-surface-200 hover:border-primary-300 hover:shadow-md transition-all active:scale-95">
+              <span className="text-base md:text-xl leading-none"><ArrowLeft className="w-4 h-4 md:w-5 md:h-5 leading-none" /></span> <span className="hidden sm:inline">Back Home</span><span className="sm:hidden">Back</span>
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-1.5 md:gap-4 relative flex-wrap sm:flex-nowrap justify-end text-right">
+            {isCustomer && user && !branding?.saRewardsDisabled && (
+              <>
+                <button
+                  onClick={() => setShowRewards(true)}
+                  className="animate-fade-in flex items-center gap-3 bg-emerald-50 border border-emerald-100 px-2 py-1.5 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl shadow-sm hover:bg-emerald-100 transition-all active:scale-95 group shrink-0"
+                >
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg sm:rounded-xl flex items-center justify-center text-white text-base sm:text-lg shadow-lg shadow-emerald-500/20 group-hover:scale-110 transition-transform"><Bean className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-100" /></div>
+                  <div className="text-left hidden sm:block">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none mb-0.5">Points</p>
+                    <p className="text-sm font-black text-emerald-900 leading-none">{Math.floor(user.points || 0)}</p>
+                  </div>
+                </button>
+
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-lg shadow-primary-500/20 hover:scale-105 active:scale-95 transition-all border-2 border-white"
+                    style={{ backgroundColor: brandingColor }}
+                  >
+                    {getInitials(user.name)}
+                  </button>
+
+                  {showUserMenu && (
+                    <div className="absolute right-0 mt-3 w-56 bg-white rounded-3xl shadow-2xl border border-surface-100 overflow-hidden z-50 animate-scale-in origin-top-right">
+                      <div className="p-4 border-b border-surface-50 bg-surface-50/50">
+                        <p className="text-[10px] font-black text-surface-400 uppercase tracking-widest mb-1">Signed in as</p>
+                        <p className="font-bold text-surface-900 truncate">{user.name}</p>
+                      </div>
+                      <div className="p-2">
+                        {!user?.isGoogle && (
+                          <button
+                            onClick={() => {
+                              setShowUserMenu(false);
+                              setShowPasswordModal(true);
+                            }}
+                            className="flex items-center gap-3 w-full p-3 rounded-2xl text-surface-600 hover:bg-surface-50 hover:text-primary-600 transition-all font-bold text-sm"
+                          >
+                            <Lock className="w-4 h-4" /> Change Password
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            setShowHistoryModal(true);
+                          }}
+                          className="flex items-center gap-3 w-full p-3 rounded-2xl text-surface-600 hover:bg-surface-50 hover:text-primary-600 transition-all font-bold text-sm"
+                        >
+                          <ScrollText className="w-4 h-4" /> Order History
+                        </button>
+                        <div className="border-t border-surface-100 my-1"></div>
+                        <button
+                          onClick={logoutUser}
+                          className="flex items-center gap-3 w-full p-3 rounded-2xl text-red-500 hover:bg-red-50 transition-all font-bold text-sm"
+                        >
+                          <LogOut className="w-4 h-4" /> Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {isCustomer && usualOrder && !usualOrderDismissed && !branding?.storeClosed && (
+        <div className="max-w-7xl mx-auto px-4 pt-4 md:px-8 animate-fade-in-up">
+          <div className="relative overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 p-4 shadow-sm md:flex md:items-center md:justify-between md:gap-6 md:p-5">
+            <button
+              type="button"
+              onClick={() => setUsualOrderDismissed(true)}
+              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-surface-400 transition-colors hover:bg-white hover:text-surface-700"
+              aria-label="Dismiss usual order suggestion"
+            >
+              <span aria-hidden="true" className="text-xl leading-none">&times;</span>
+            </button>
+            <div className="flex items-center gap-3 pr-8">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-white shadow-lg shadow-amber-300/40">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">Welcome back</p>
+                <p className="font-heading text-lg font-black text-surface-900">Want your usual order?</p>
+                <p className="text-xs font-medium text-surface-500">
+                  {usualOrder.items.map(item => `${item.quantity}x ${item.product.name}`).join(', ')}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={addUsualOrderToCart}
+              className="mt-4 w-full rounded-2xl px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] md:mt-0 md:w-auto md:shrink-0"
+              style={{ backgroundColor: brandingColor }}
+            >
+              Add Usual Order
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 pt-4 md:pt-6 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-16">
+        {/* Left Sidebar: Categories */}
+        <div className="w-full md:w-56 lg:w-64 flex-shrink-0 animate-fade-in-up relative max-w-full min-w-0">
+          <div className="md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] flex flex-col">
+            <div className="flex-shrink-0 mb-6">
+              <div className="flex items-start gap-3 mb-2 md:mb-3">
+                <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl overflow-hidden shadow-lg border-2 border-white flex-shrink-0 bg-white">
+                  <img src="/logo.png" className="w-full h-full object-cover" alt="Mona's Pang Noche Buena" onError={(e) => { e.currentTarget.src = '/logo.png'; }} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="font-heading text-xl md:text-2xl lg:text-3xl font-bold text-surface-900 uppercase leading-tight" style={{ color: brandingColor }}>Mona's Pang Noche Buena</h1>
+                  <p className="text-surface-500 text-xs md:text-sm mt-1.5 md:mt-2">Tap an item to customize and add to cart</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex overflow-x-auto md:flex-col gap-2 md:gap-3 pb-2 md:pb-20 scrollbar-hide px-1 md:overflow-y-auto rounded-xl md:rounded-3xl">
+              <button
+                onClick={() => setActiveCategory('all')}
+                className={`flex-shrink-0 w-20 md:w-full flex flex-col md:flex-row items-center justify-center md:justify-start text-center md:text-left aspect-square md:aspect-auto rounded-2xl md:rounded-2xl p-2 md:py-3.5 md:px-5 transition-all ${activeCategory === 'all' ? 'text-white shadow-lg shadow-primary-500/30 scale-105 md:scale-100' : 'bg-white text-surface-600 border border-surface-200 hover:border-primary-300 hover:bg-surface-50 hover:scale-105 md:hover:scale-100'}`}
+                style={activeCategory === 'all' ? { backgroundColor: brandingColor } : {}}
+              >
+                <div className="mb-1 md:mb-0 md:mr-4"><Utensils className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" /></div>
+                <span className="text-[10px] md:text-xs lg:text-sm font-bold leading-tight md:leading-normal">All Items</span>
+              </button>
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(String(cat.id))}
+                  className={`flex-shrink-0 w-20 md:w-full flex flex-col md:flex-row items-center justify-center md:justify-start text-center md:text-left aspect-square md:aspect-auto rounded-2xl md:rounded-2xl p-2 md:py-3.5 md:px-5 transition-all ${activeCategory === String(cat.id) ? 'text-white shadow-lg shadow-primary-500/30 scale-105 md:scale-100' : 'bg-white text-surface-600 border border-surface-200 hover:border-primary-300 hover:bg-surface-50 hover:scale-105 md:hover:scale-100'}`}
+                  style={activeCategory === String(cat.id) ? { backgroundColor: brandingColor } : {}}
+                >
+                  <div className="mb-1 md:mb-0 md:mr-4">
+                    {cat.icon === '📦' ? <Package className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" /> : (cat.icon || <Package className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7" />)}
+                  </div>
+                  <span className="text-[10px] md:text-xs lg:text-sm font-bold leading-tight md:leading-normal line-clamp-2 md:line-clamp-1">{cat.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Content: Products Grid */}
+        <div className="flex-1 animate-fade-in-up">
+          {filteredCategories.length === 0 ? (
+            <div className="rounded-3xl border border-primary-100 bg-white p-10 text-center shadow-sm">
+              <h2 className="font-heading text-xl font-bold text-surface-800">No products available yet</h2>
+              <p className="mt-2 text-sm text-surface-500">Please check back soon for Mona&apos;s Pang Noche Buena favorites.</p>
+            </div>
+          ) : filteredCategories.map(cat => (
+            <div key={cat.id} className="mb-12">
+              <h2 className="font-heading text-xl md:text-2xl font-bold text-surface-800 mb-6 flex items-center gap-2">
+                <span className="w-2 h-8 rounded-full" style={{ backgroundColor: brandingColor }}></span>
+                {cat.name}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-5">
+                {cat.products?.map((product, idx) => (
+                  <button
+                    key={product.id}
+                    onClick={() => handleProductClick(product)}
+                    className={`bg-white border border-surface-200/50 rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 text-left overflow-hidden group flex flex-row md:flex-col h-[130px] md:h-auto ${(!product.available || product.stock <= 0) ? 'opacity-75 grayscale-[0.5] cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
+                    disabled={!product.available || product.stock <= 0}
+                  >
+                    <div className="w-[130px] h-full md:w-full md:h-48 flex-shrink-0 relative overflow-hidden bg-surface-100">
+                      {product.image ? (
+                        <img
+                          src={getOptimizedImageUrl(product.image)}
+                          className="block w-full h-full object-cover"
+                          loading="eager"
+                          decoding="async"
+                          alt={product.name}
+                          onError={(event) => {
+                            event.currentTarget.onerror = null;
+                            event.currentTarget.src = '/logo.png';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-fuchsia-100">
+                          <img src="/logo.png" className="w-20 h-20 md:w-28 md:h-28 object-contain opacity-90" alt="" aria-hidden="true" />
+                        </div>
+                      )}
+                      {product.tags && (() => {
+                        const allTags = product.tags.split(',');
+                        // Prioritize 'recommended' (Best Seller) badge
+                        const priorityTag = allTags.includes('recommended') ? 'recommended' : allTags[0];
+                        const defaultBadges = {
+                          recommended: { text: 'Best Seller', icon: <Star className="w-2.5 h-2.5 fill-current" />, style: 'bg-amber-500/95 text-white border-amber-400/20' },
+                          spicy: { text: 'Spicy', icon: <Flame className="w-2.5 h-2.5" />, style: 'bg-red-600/95 text-white border-red-500/20' },
+                          halal: { text: 'Halal', icon: <CheckCircle className="w-2.5 h-2.5" />, style: 'bg-emerald-600/95 text-white border-emerald-500/20' },
+                          sugar_free: { text: 'Sugar-Free', icon: <Ban className="w-2.5 h-2.5" />, style: 'bg-cyan-600/95 text-white border-cyan-500/20' },
+                          gluten_free: { text: 'GF', icon: <Wheat className="w-2.5 h-2.5" />, style: 'bg-yellow-500/95 text-slate-900 border-yellow-400/20' },
+                          nuts: { text: 'Nuts', icon: <AlertCircle className="w-2.5 h-2.5" />, style: 'bg-amber-800/95 text-white border-amber-700/20' },
+                          vegan: { text: 'Vegan', icon: <Leaf className="w-2.5 h-2.5" />, style: 'bg-lime-600/95 text-white border-lime-500/20' }
+                        };
+                        let badgeStyles = defaultBadges[priorityTag];
+                        if (!badgeStyles && branding?.custom_badges && Array.isArray(branding.custom_badges)) {
+                          const custom = branding.custom_badges.find(b => b.id === priorityTag);
+                          if (custom) {
+                            badgeStyles = { text: custom.label, icon: <Tag className="w-2.5 h-2.5" />, style: custom.color + ' backdrop-blur-sm border/50' };
+                          }
+                        }
+                        if (!badgeStyles) return null;
+                        return (
+                          <div className="absolute top-2 right-2 z-10">
+                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-full shadow-md uppercase tracking-wider flex items-center gap-0.5 border ${badgeStyles.style}`}>
+                              {badgeStyles.icon} {badgeStyles.text}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                      {(!product.available || product.stock <= 0) && (
+                        <div className="absolute inset-0 bg-surface-900/60 backdrop-blur-[2px] flex items-center justify-center">
+                          <span className="bg-red-500 text-white font-black px-4 py-1.5 rounded-xl text-xs uppercase tracking-widest -rotate-12">Sold Out</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 md:p-5 flex flex-col flex-1 w-full bg-white overflow-hidden">
+                      <h3 className="font-heading font-bold text-surface-900 text-[15px] md:text-xl mb-0.5 md:mb-1 line-clamp-2 md:line-clamp-1 leading-tight">{product.name}</h3>
+                      {product.stock > 0 && product.stock < 5 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] md:text-[11px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mb-1 animate-pulse uppercase tracking-wide">
+                          🔥 Only {product.stock} left!
+                        </span>
+                      )}
+                      <p className="text-[11px] md:text-sm text-surface-500 line-clamp-2 md:line-clamp-2 mb-2 md:mb-4 flex-1 leading-snug">{product.description}</p>
+                      <div className="flex items-center justify-between mt-auto">
+                        <span className="font-heading font-black text-base md:text-2xl" style={{ color: brandingColor }}>
+                          {product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0
+                            ? `From ${formatCurrency(getProductBasePrice(product))}`
+                            : formatCurrency(getProductBasePrice(product))}
+                        </span>
+                        {!branding?.storeClosed ? (
+                          <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center text-lg md:text-xl font-black transition-all group-hover:scale-110 text-white" style={{ backgroundColor: brandingColor }}>
+                            +
+                          </div>
+                        ) : (
+                          <div className="text-[10px] font-black text-surface-450 uppercase tracking-widest bg-surface-100 px-2.5 py-1.5 rounded-lg border border-surface-200/50" style={{ color: '#6b7280' }}>
+                            View
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Floating Cart Button */}
+      {itemCount > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-sm px-4 sm:px-6">
+          <Link
+            to="/cart"
+            className="flex items-center justify-between w-full h-16 px-4 sm:px-6 rounded-3xl text-white shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all animate-bounce-in"
+            style={{ backgroundColor: brandingColor }}
+          >
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5.5 8h13l1.5 13H4L5.5 8z" /><path d="M8 11V6a4 4 0 0 1 8 0v5" /></svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 leading-none mb-1 truncate">{itemCount} Items</p>
+                <p className="text-lg font-black leading-none">₱{getSubtotal().toFixed(2)}</p>
+              </div>
+            </div>
+            <span className="font-black uppercase tracking-wide text-xs sm:text-sm whitespace-nowrap ml-2">Review Cart →</span>
+          </Link>
+        </div>
+      )}
+
+      {/* Product Detail Modal / Combo Modal */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={closeProductModal}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-[calc(100vw-2rem)] sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up shadow-2xl" onClick={e => e.stopPropagation()}>
+
+            {/* Modal Header Image */}
+            <div className="w-full h-64 sm:h-72 md:h-80 bg-surface-50 flex items-center justify-center text-7xl relative overflow-hidden flex-shrink-0">
+              {getOptimizedImageUrl((selectedProduct.isCombo && addOpts.comboChoices?.[`group${comboStep}`]?.image) || selectedProduct.image) && (
+                <img
+                  src={getOptimizedImageUrl((selectedProduct.isCombo && addOpts.comboChoices?.[`group${comboStep}`]?.image) || selectedProduct.image)}
+                  className="w-full h-full object-cover relative z-10 transition-all duration-700"
+                  alt={selectedProduct.name}
+                  loading="lazy"
+                  decoding="async"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
+              )}
+              {/* Back Button for Combo Step 2 */}
+              {selectedProduct.isCombo && comboStep > 1 && (
+                <button
+                  onClick={() => setComboStep(1)}
+                  className="absolute top-4 left-4 w-8 h-8 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white backdrop-blur-md transition-all z-20 group"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+              )}
+
+              <button
+                onClick={closeProductModal}
+                className="absolute top-4 right-4 w-8 h-8 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white backdrop-blur-md transition-all z-20 group"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 scrollbar-hide">
+              {/* Product Title */}
+              <h2 className="font-heading text-xl sm:text-2xl md:text-3xl font-black text-surface-900 mb-2 leading-tight" style={{ color: brandingColor }}>
+                {selectedProduct.name}
+              </h2>
+              {/* Full-Sized Badges in Details Panel */}
+              {selectedProduct.tags && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selectedProduct.tags.split(',').map(tag => {
+                    const defaultBadges = {
+                      recommended: { text: 'Best Seller', icon: <Star className="w-2.5 h-2.5 fill-current" />, style: 'bg-amber-500 text-white' },
+                      spicy: { text: 'Spicy', icon: <Flame className="w-2.5 h-2.5" />, style: 'bg-red-600 text-white' },
+                      halal: { text: 'Halal Certified', icon: <CheckCircle className="w-2.5 h-2.5" />, style: 'bg-emerald-600 text-white' },
+                      sugar_free: { text: 'Sugar-Free', icon: <Ban className="w-2.5 h-2.5" />, style: 'bg-cyan-600 text-white' },
+                      gluten_free: { text: 'Gluten-Free', icon: <Wheat className="w-2.5 h-2.5" />, style: 'bg-yellow-500 text-slate-900' },
+                      nuts: { text: 'Contains Nuts', icon: <AlertCircle className="w-2.5 h-2.5" />, style: 'bg-amber-800 text-white' },
+                      vegan: { text: 'Vegan', icon: <Leaf className="w-2.5 h-2.5" />, style: 'bg-lime-600 text-white' }
+                    };
+
+                    let badgeStyles = defaultBadges[tag];
+                    if (!badgeStyles && branding?.custom_badges && Array.isArray(branding.custom_badges)) {
+                      const custom = branding.custom_badges.find(b => b.id === tag);
+                      if (custom) {
+                        badgeStyles = { text: custom.label, icon: <Tag className="w-2.5 h-2.5" />, style: custom.color };
+                      }
+                    }
+                    if (!badgeStyles) return null;
+                    return (
+                      <span key={tag} className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border shadow-sm flex items-center gap-1 ${badgeStyles.style}`}>
+                        {badgeStyles.icon} {badgeStyles.text}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedProduct.isCombo ? (
+                <div className="space-y-6">
+                  {/* Combo Step Progress */}
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className={`flex-1 h-2 rounded-full transition-all ${comboStep >= 1 ? 'bg-primary-500' : 'bg-surface-200'}`} style={comboStep >= 1 ? { backgroundColor: brandingColor } : {}}></div>
+                    <div className={`flex-1 h-2 rounded-full transition-all ${comboStep >= 2 ? 'bg-primary-500' : 'bg-surface-200'}`} style={comboStep >= 2 ? { backgroundColor: brandingColor } : {}}></div>
+                  </div>
+
+                  <div className="animate-fade-in" key={comboStep}>
+                    <h3 className="text-[10px] font-black text-surface-400 uppercase tracking-[0.2em] mb-4">
+                      {comboStep === 1 ? (selectedProduct.comboGroup1Name || 'Step 1: Choose Item') : (selectedProduct.comboGroup2Name || 'Step 2: Choose Side/Drink')}
+                    </h3>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {(selectedProduct.comboOptions || [])
+                        .filter(opt => opt.groupNumber === comboStep)
+                        .map(opt => {
+                          const isSelected = addOpts.comboChoices?.[`group${comboStep}`]?.id === opt.product.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => {
+                                setAddOpts(prev => ({
+                                  ...prev,
+                                  comboChoices: { ...prev.comboChoices, [`group${comboStep}`]: opt.product }
+                                }));
+                              }}
+                              className={`relative flex flex-col rounded-[24px] overflow-hidden border-2 transition-all duration-300 group ${isSelected ? 'shadow-lg -translate-y-1' : 'border-surface-100 bg-white hover:border-surface-300 shadow-sm'}`}
+                              style={isSelected ? { borderColor: brandingColor, backgroundColor: `${brandingColor}08` } : {}}
+                            >
+                              {/* Checkmark Badge */}
+                              {isSelected && (
+                                <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-white shadow-md animate-scale-in" style={{ backgroundColor: brandingColor }}>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                                </div>
+                              )}
+
+                              <div className="aspect-[4/3] overflow-hidden bg-surface-50">
+                                {getOptimizedImageUrl(opt.product.image) && (
+                                  <img
+                                    src={getOptimizedImageUrl(opt.product.image)}
+                                    className={`w-full h-full object-cover transition-transform duration-500 ${isSelected ? 'scale-110' : 'group-hover:scale-105'}`}
+                                    alt={opt.product.name}
+                                    loading="lazy"
+                                    decoding="async"
+                                    sizes="(max-width: 768px) 100vw, 25vw"
+                                  />
+                                )}
+                              </div>
+
+                              <div className="p-3 text-center">
+                                <p className={`font-black text-[11px] leading-tight uppercase tracking-tight mb-1 transition-colors ${isSelected ? 'text-surface-900' : 'text-surface-600'}`}>{opt.product.name}</p>
+                                {opt.priceBonus > 0 && (
+                                  <span className="inline-block px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 text-[10px] font-black" style={{ backgroundColor: `${brandingColor}20`, color: brandingColor }}>
+                                    +₱{opt.priceBonus}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    {/* Next Button for Step 1 */}
+                    {comboStep === 1 && addOpts.comboChoices?.group1 && (
+                      <div className="pt-6 animate-fade-in-up">
+                        <button
+                          onClick={() => setComboStep(2)}
+                          className="w-full py-4 rounded-2xl font-black text-white uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          style={{ backgroundColor: brandingColor }}
+                        >
+                          {selectedProduct.comboGroup2Name || 'Select Side/Drink'} →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {comboStep === 2 && addOpts.comboChoices?.group1 && addOpts.comboChoices?.group2 && (
+                    <div className="pt-6 border-t border-surface-100 animate-bounce-in">
+                      <div className="bg-surface-50 p-4 rounded-2xl mb-6">
+                        <p className="text-[10px] font-black text-surface-400 uppercase tracking-widest mb-2">Selection Summary</p>
+                        <div className="flex justify-between text-sm font-bold text-surface-700">
+                          <span>{addOpts.comboChoices.group1.name}</span>
+                          <span>+ {addOpts.comboChoices.group2.name}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleAddToCart(selectedProduct)}
+                        className="w-full py-4 rounded-2xl font-black text-white uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: brandingColor }}
+                        disabled={branding?.storeClosed}
+                      >
+                        {branding?.storeClosed ? 'Store Closed' : `Add Combo to Cart ${formatCurrency(selectedProduct.price)}`}
+                      </button>
+                      <button onClick={() => setComboStep(1)} className="w-full py-3 text-surface-400 text-[10px] font-black uppercase tracking-widest hover:text-surface-600 transition-colors">
+                        ← Change Selections
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-surface-500 text-xs sm:text-sm mb-5 sm:mb-6">{selectedProduct.description}</p>
+                  <div className="flex items-center gap-4 mb-8 sm:mb-8">
+                    <p className="font-heading text-2xl sm:text-3xl font-bold" style={{ color: brandingColor }}>
+                      {formatCurrency((() => {
+                        if (addOpts.size && selectedProduct.sizes && Array.isArray(selectedProduct.sizes)) {
+                          const match = selectedProduct.sizes.find(s => s.name === addOpts.size);
+                          if (match) return parseFloat(match.price);
+                        }
+                        return getProductBasePrice(selectedProduct);
+                      })())}
+                    </p>
+                    {selectedProduct.pointsCost && isCustomer && !branding?.saRewardsDisabled && (
+                      <div className="bg-amber-50 text-amber-600 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-100 flex items-center gap-1.5">
+                        <Bean className="w-3.5 h-3.5" /> Redeem for {selectedProduct.pointsCost} Points
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Size Selector */}
+                  {selectedProduct.sizes && Array.isArray(selectedProduct.sizes) && selectedProduct.sizes.length > 0 && (
+                    <div className={`mb-6 p-1 rounded-2xl transition-all ${optionError ? 'bg-red-50 border border-red-200 p-4 animate-shake' : ''}`}>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className={`text-xs font-black uppercase tracking-widest ${optionError ? 'text-red-600' : 'text-surface-400'}`}>Choose Option</h3>
+                        {optionError && <span className="text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full animate-pulse">Required</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProduct.sizes.map(sizeItem => {
+                          const isDisabled = sizeItem.available === false;
+                          const isActive = addOpts.size === sizeItem.name;
+                          return (
+                            <button
+                              key={sizeItem.name}
+                              type="button"
+                              disabled={isDisabled}
+                              onClick={() => {
+                                setAddOpts(prev => ({ ...prev, size: prev.size === sizeItem.name ? null : sizeItem.name }));
+                                setOptionError(false);
+                              }}
+                              className={`px-4 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${isDisabled
+                                ? 'bg-surface-100 border-surface-200 text-surface-300 cursor-not-allowed line-through opacity-60'
+                                : isActive
+                                  ? 'border-transparent text-white shadow-md'
+                                  : 'bg-surface-50 border-surface-200 text-surface-600 hover:border-surface-400'
+                                }`}
+                              style={isActive && !isDisabled ? { backgroundColor: brandingColor } : {}}
+                            >
+                              {sizeItem.name}
+                              <span className="ml-1.5 opacity-80">{formatCurrency(sizeItem.price)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add-ons */}
+                  {selectedProduct.addons && selectedProduct.addons.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-xs font-black text-surface-400 uppercase tracking-widest mb-3">Custom Add-ons</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProduct.addons.map(addon => {
+                          const isDisabled = addon.available === false;
+                          const isSelected = addOpts.addons.find(a => a.id === addon.id);
+                          return (
+                            <button
+                              key={addon.id}
+                              onClick={() => !isDisabled && toggleAddon(addon)}
+                              disabled={isDisabled}
+                              className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${isDisabled
+                                  ? 'bg-surface-100 border-surface-200 text-surface-300 cursor-not-allowed line-through opacity-60'
+                                  : isSelected
+                                    ? 'border-transparent text-white'
+                                    : 'bg-surface-50 border-surface-200 text-surface-600 hover:border-primary-300'
+                                }`}
+                              style={isSelected && !isDisabled ? { backgroundColor: brandingColor } : {}}>
+                              {addon.name} +{formatCurrency(addon.price)} {isDisabled && <span className="text-[10px] ml-1 uppercase">(Sold Out)</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => handleAddToCart(selectedProduct)}
+                      className="flex-1 py-4 sm:py-4 rounded-2xl text-sm sm:text-base font-black text-white uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: brandingColor }}
+                      disabled={!selectedProduct.available || branding?.storeClosed}
+                    >
+                      {branding?.storeClosed ? 'Store Closed' : 'Add to Cart'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Rewards Gallery Modal */}
+      {showRewards && !branding?.saRewardsDisabled && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+          {/* Dark blurred backdrop */}
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => setShowRewards(false)}></div>
+
+          <div className="relative bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
+
+            {/* Header Section */}
+            <div className="relative p-8 md:p-10 text-white overflow-hidden shrink-0" style={{ backgroundColor: brandingColor }}>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+
+              <div className="relative z-10 flex justify-between items-start">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-xs font-black uppercase tracking-widest mb-4 border border-white/20 shadow-sm backdrop-blur-md">
+                    <Bean className="w-3 h-3" /> VIP Member
+                  </div>
+                  <h2 className="text-4xl md:text-5xl font-black tracking-tight uppercase mb-2 drop-shadow-sm">Rewards Gallery</h2>
+                  <p className="text-white/90 font-bold text-lg flex items-center gap-2">
+                    You have <span className="text-2xl font-black bg-white/20 px-3 py-1 rounded-xl shadow-inner">{Math.floor(user?.points || 0)}</span> Points
+                  </p>
+                </div>
+                <button onClick={() => setShowRewards(false)} className="w-12 h-12 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-xl transition-all shadow-sm backdrop-blur-md">✕</button>
+              </div>
+            </div>
+
+            {/* Info Banner */}
+            <div className="bg-slate-50 border-b border-slate-100 p-4 px-8 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 shadow-sm z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-lg shadow-inner shrink-0">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">How to earn points</h4>
+                  <p className="text-[11px] font-bold text-slate-500">
+                    Earn <strong className="text-slate-700">1 Point</strong> for every <strong className="text-slate-700">₱{branding?.points_rate || '100'}</strong> spent on your orders!
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Products Grid */}
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50/50">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {categories.flatMap(c => c.products).filter(p => p.pointsCost).map(product => {
+                  const canAfford = (user?.points || 0) >= product.pointsCost;
+                  const progress = Math.min(100, ((user?.points || 0) / product.pointsCost) * 100);
+
+                  return (
+                    <div key={product.id} className="group bg-white border border-slate-200 rounded-[2rem] p-5 shadow-sm hover:shadow-xl transition-all relative overflow-hidden flex flex-col justify-between h-full">
+
+                      {/* Decorative background element for affordable items */}
+                      {canAfford && (
+                        <div className="absolute top-0 right-0 w-32 h-32 opacity-10 rounded-full blur-2xl transition-all group-hover:scale-150" style={{ backgroundColor: brandingColor }}></div>
+                      )}
+
+                      <div className="relative z-10 flex gap-5 items-center mb-6">
+                        <div className="relative shrink-0">
+                          {getOptimizedImageUrl(product.image) && (
+                            <img
+                              src={getOptimizedImageUrl(product.image)}
+                              alt={product.name}
+                              loading="lazy"
+                              decoding="async"
+                              className={`w-20 h-20 rounded-2xl object-cover shadow-md transition-transform group-hover:scale-105 ${!canAfford ? 'grayscale opacity-80' : ''}`}
+                            />
+                          )}
+                          {canAfford && (
+                            <div className="absolute -top-2 -right-2 w-6 h-6 bg-emerald-500 text-white text-xs flex items-center justify-center rounded-full shadow-md border-2 border-white">✓</div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className={`font-black text-lg leading-tight mb-1 ${canAfford ? 'text-slate-900' : 'text-slate-500'}`}>{product.name}</h4>
+                          <p className="font-black text-sm flex items-center gap-1" style={{ color: brandingColor }}>
+                            <Bean className="w-3 h-3" /> {product.pointsCost} <span className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Pts</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="relative z-10 mt-auto">
+                        {!canAfford && (
+                          <div className="mb-4">
+                            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                              <span>Progress</span>
+                              <span>{Math.floor(user?.points || 0)} / {product.pointsCost}</span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progress}%`, backgroundColor: brandingColor }}></div>
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          disabled={!canAfford || !product.available || branding?.storeClosed}
+                          onClick={() => {
+                            addToCart(product, { isRedemption: true });
+                            setShowRewards(false);
+                          }}
+                          className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] ${canAfford && !branding?.storeClosed
+                            ? 'text-white shadow-lg'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200'
+                            }`}
+                          style={canAfford && !branding?.storeClosed ? { backgroundColor: brandingColor } : {}}
+                        >
+                          {branding?.storeClosed
+                            ? 'Store Closed'
+                            : (canAfford ? 'Redeem Reward' : `Need ${product.pointsCost - Math.floor(user?.points || 0)} More Points`)}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {categories.flatMap(c => c.products).filter(p => p.pointsCost).length === 0 && (
+                <div className="text-center py-20 flex flex-col items-center">
+                  <div className="mb-4 opacity-50"><Gift className="w-16 h-16 text-slate-500" /></div>
+                  <h3 className="text-xl font-black text-slate-800">No Rewards Available</h3>
+                  <p className="text-slate-500 font-medium">Check back later for exciting items you can redeem!</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPasswordModal(false)}></div>
+          <div className="bg-white rounded-[40px] w-full max-w-md p-8 relative z-10 shadow-2xl animate-fade-in-up">
+            <h3 className="text-2xl font-black text-slate-900 mb-6">Update Security</h3>
+
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Current Password</label>
+                <input
+                  type="password"
+                  required
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm focus:ring-1 outline-none transition-all"
+                  style={{ '--tw-ring-color': brandingColor, borderColor: brandingColor }}
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm focus:ring-1 outline-none transition-all"
+                  style={{ '--tw-ring-color': brandingColor, borderColor: brandingColor }}
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Confirm New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm focus:ring-1 outline-none transition-all"
+                  style={{ '--tw-ring-color': brandingColor, borderColor: brandingColor }}
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {passwordMessage.text && (
+                <div className={`p-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest ${passwordMessage.type === 'success' ? 'bg-surface-50' : 'bg-red-50 text-red-600'}`} style={passwordMessage.type === 'success' ? { color: brandingColor } : {}}>
+                  {passwordMessage.text}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="flex-1 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="flex-1 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg disabled:opacity-50 transition-all"
+                  style={{ backgroundColor: brandingColor, boxShadow: `0 10px 15px -3px ${brandingColor}33` }}
+                >
+                  {passwordLoading ? 'Updating...' : 'Save Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Event Packages Modal */}
+      {showPackages && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pb-24 md:p-6">
+          <div className="absolute inset-0 bg-surface-900/60 backdrop-blur-sm" onClick={closePackages}></div>
+          <div className="relative z-10 w-full max-w-4xl max-h-[90vh] overflow-x-hidden overflow-y-auto rounded-[28px] bg-white shadow-2xl animate-fade-in-up scrollbar-hide">
+
+            <div className="sticky top-0 z-20 flex justify-between items-center p-5 md:p-6 bg-white/90 backdrop-blur-md border-b border-surface-100">
+              <div>
+                <h2 className="text-xl md:text-2xl font-heading font-black text-surface-900 leading-tight">Pop-Up Cafe <span style={{ color: brandingColor }}>Packages</span></h2>
+                <p className="text-surface-500 font-medium mt-0.5 text-xs md:text-sm">Bring the premium coffee experience to your next event!</p>
+              </div>
+              <button
+                onClick={closePackages}
+                className="w-8 h-8 md:w-10 md:h-10 bg-surface-100 hover:bg-surface-200 rounded-full flex items-center justify-center text-surface-600 transition-all active:scale-95 flex-shrink-0"
+              >
+                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="relative z-10 p-4 md:p-6 space-y-6">
+              {/* Package Tiers */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+
+                {eventPackages.length === 0 ? (
+                  <div className="col-span-full py-8 text-center text-surface-500 font-medium border-2 border-dashed border-surface-200 rounded-2xl">
+                    No active packages available right now.
+                  </div>
+                ) : (
+                  eventPackages.map(pkg => (
+                    <div key={pkg.id} className={`rounded-[20px] p-5 text-center shadow-sm relative overflow-hidden group hover:border-primary-300 transition-all ${pkg.isPopular ? 'border-2 bg-white transform md:-translate-y-2 shadow-lg' : 'border border-surface-200 bg-white'}`} style={pkg.isPopular ? { borderColor: brandingColor } : {}}>
+                      {pkg.isPopular && (
+                        <div className="absolute top-0 inset-x-0 py-1 text-[9px] md:text-[10px] font-black text-white uppercase tracking-widest" style={{ backgroundColor: brandingColor }}>Most Popular</div>
+                      )}
+
+                      <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center shadow-sm mx-auto mb-3 mt-4 group-hover:scale-110 transition-transform ${pkg.isPopular ? 'bg-white' : 'bg-white border border-surface-100'}`} style={pkg.isPopular ? { backgroundColor: `${brandingColor}10` } : {}}>
+                        {pkg.icon === 'Star' ? <Star className="w-7 h-7 md:w-8 md:h-8" style={pkg.isPopular ? { fill: brandingColor, color: brandingColor } : { color: '#94a3b8' }} /> : pkg.icon === 'Store' ? <Store className="w-7 h-7 md:w-8 md:h-8" style={pkg.isPopular ? { color: brandingColor } : { color: '#94a3b8' }} /> : <Coffee className="w-7 h-7 md:w-8 md:h-8" style={pkg.isPopular ? { color: brandingColor } : { color: '#94a3b8' }} />}
+                      </div>
+
+                      <h4 className="text-lg md:text-xl font-black text-surface-900 mb-1">{pkg.name}</h4>
+                      <p className="text-surface-500 text-xs mb-3 min-h-[36px] flex items-center justify-center">{pkg.description}</p>
+                      <div className="text-2xl md:text-3xl font-black mb-4" style={{ color: pkg.isPopular ? brandingColor : '#334155' }}>{pkg.priceText}</div>
+
+                      {pkg.features && (
+                        <ul className="text-xs text-surface-600 space-y-2 mb-6 text-left max-w-[200px] mx-auto min-h-[100px]">
+                          {pkg.features.split(',').map((feature, i) => (
+                            <li key={i} className="flex gap-1.5 items-start">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                              <span className="leading-tight">{feature.trim()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {isCustomer ? (
+                        <button onClick={() => handleBookNow(pkg)} className={`block text-center w-full py-2.5 md:py-3 rounded-lg font-bold text-sm transition-transform hover:scale-105 ${pkg.isPopular ? 'text-white shadow-md' : 'bg-white border border-surface-200 text-surface-900 hover:bg-surface-100'}`} style={pkg.isPopular ? { backgroundColor: brandingColor } : {}}>
+                          Book Now
+                        </button>
+                      ) : (
+                        <p className="border-t border-surface-200 pt-3 text-xs font-bold text-surface-400">Log in to book this package</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer Note */}
+              <div className="bg-white rounded-2xl p-6 text-center border border-surface-200 shadow-sm">
+                <Info className="w-6 h-6 text-surface-400 mx-auto mb-2" />
+                <h5 className="font-bold text-surface-800 mb-1">Need a custom quotation?</h5>
+                <p className="text-surface-500 text-sm mb-4">If you want a custom package, please inquire through our Facebook page and our team will help create one for your event.</p>
+                <a href="https://www.facebook.com/hometownbrew24" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#1877F2] px-4 py-2.5 text-sm font-black text-white shadow-sm transition-all hover:bg-[#166fe5] hover:scale-105">
+                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 21v-8h2.75l.4-3h-3.15V8.08c0-.87.24-1.46 1.5-1.46h1.75V3.94c-.3-.04-1.34-.13-2.55-.13-2.52 0-4.25 1.54-4.25 4.37V10H7v3h2.95v8h3.55Z" /></svg> Inquire on Facebook
+                </a>
+                <button type="button" onClick={() => setShowPackageTerms(true)} className="mt-3 inline-flex items-center gap-2 rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm font-black text-surface-700 shadow-sm transition-all hover:border-surface-400 hover:bg-surface-50 hover:scale-105">
+                  <FileText className="w-4 h-4" /> Terms &amp; Conditions
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          {showPackageTerms && (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-surface-900/70 backdrop-blur-sm" onClick={() => setShowPackageTerms(false)}></div>
+              <div role="dialog" aria-modal="true" aria-labelledby="package-terms-title" className="relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl md:p-8">
+                <div className="mb-6 flex items-start justify-between gap-4 border-b border-surface-100 pb-5">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: brandingColor }}>Event Packages</p>
+                    <h3 id="package-terms-title" className="mt-1 text-2xl font-heading font-black text-surface-900">Terms &amp; Conditions</h3>
+                  </div>
+                  <button type="button" onClick={() => setShowPackageTerms(false)} aria-label="Close terms and conditions" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-600 transition-colors hover:bg-surface-200">
+                    <span className="text-xl leading-none">&times;</span>
+                  </button>
+                </div>
+                <div className="space-y-5 text-sm leading-relaxed text-surface-600">
+                  <section><h4 className="font-black text-surface-900">Booking &amp; Payment</h4><p>A non-refundable deposit P1,000 is required to secure your event date. Full payment must be completed before the event date.</p></section>
+                  <section><h4 className="font-black text-surface-900">Guest Count</h4><p>Packages are based on the confirmed number of guests. Any additional guests will be charged accordingly.</p></section>
+                  <section><h4 className="font-black text-surface-900">Menu Customization</h4><p>Menu selections must be finalized at least 5 days before the event. Changes after confirmation are subject to availability.</p></section>
+                  <section><h4 className="font-black text-surface-900">Event Duration</h4><p>Service time is based on the agreed package. Additional service hours may incur extra charges.</p></section>
+                  <section><h4 className="font-black text-surface-900">Setup Requirements</h4><p>Client must provide access to the venue, power supply, and setup space. Setup time will be coordinated in advance.</p></section>
+                  <section><h4 className="font-black text-surface-900">Cancellations &amp; Rescheduling</h4><p>Deposits are non-refundable. Rescheduling is subject to availability and must be requested in advance.</p></section>
+                </div>
+                <button type="button" onClick={() => setShowPackageTerms(false)} className="mt-7 w-full rounded-xl px-4 py-3 text-sm font-black text-white transition-opacity hover:opacity-90" style={{ backgroundColor: brandingColor }}>Close</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Package Booking Modal */}
+      {bookingPackage && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-surface-900/10 p-0 sm:p-6">
+          <div className="absolute inset-0 bg-surface-900/70 backdrop-blur-sm" onClick={() => !bookingSubmitting && setBookingPackage(null)}></div>
+          <form noValidate onSubmit={handleBookingSubmit} className="relative z-10 my-0 flex min-h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col overflow-y-auto rounded-none border-white/70 bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:my-6 sm:min-h-0 sm:max-h-[calc(100dvh-3rem)] sm:rounded-[30px] sm:border sm:p-8">
+            <div className="mb-6 flex flex-shrink-0 items-start justify-between gap-4 border-b border-surface-100 pb-6">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary-600">Booking request</p>
+                <h2 className="mt-2 font-heading text-2xl font-black tracking-tight text-surface-900 sm:text-3xl">{bookingPackage.name}</h2>
+                <p className="mt-1 text-sm font-medium text-surface-500">Tell us what, where, and when.</p>
+              </div>
+              <button type="button" disabled={bookingSubmitting} onClick={() => setBookingPackage(null)} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-600 hover:bg-surface-200">×</button>
+            </div>
+
+            <div className="mb-6 rounded-2xl border border-surface-200 bg-surface-50 p-4 text-sm text-surface-600 shadow-sm">
+              <p className="font-bold text-surface-900">Customer details</p>
+              <p className="mt-1">{user?.name} · {user?.email}</p>
+            </div>
+
+            <div className="mb-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-surface-400"><span className="h-px flex-1 bg-surface-100" />Event details<span className="h-px flex-1 bg-surface-100" /></div>
+            <div className="grid grid-cols-1 gap-x-5 gap-y-5 md:grid-cols-2">
+              <label className="text-sm font-bold text-surface-700" data-booking-error={bookingErrors.eventType ? 'true' : undefined}>What is the event? <span className="text-red-500">*</span>
+                <div className="relative">
+                  <button type="button" aria-haspopup="listbox" aria-expanded={bookingEventOpen} onClick={() => setBookingEventOpen(current => !current)} className={`input-field mt-1 flex w-full items-center justify-between text-left font-medium ${bookingErrors.eventType ? 'border-red-500 bg-red-50/40 ring-2 ring-red-100 shadow-[0_0_14px_rgba(239,68,68,0.22)]' : ''}`}><span className={bookingForm.eventType ? 'text-surface-900' : 'text-surface-400'}>{bookingForm.eventType || 'Select an event type'}</span><ChevronDown className={`h-4 w-4 text-surface-400 transition-transform ${bookingEventOpen ? 'rotate-180' : ''}`} /></button>
+                  {bookingEventOpen && <div role="listbox" className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-30 overflow-hidden rounded-2xl border border-surface-200 bg-white p-1.5 shadow-xl"><button type="button" onClick={() => { setBookingForm({ ...bookingForm, eventType: '', otherEventType: '' }); setBookingEventOpen(false); }} className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-surface-400 hover:bg-surface-50">Select an event type</button>{COMMON_EVENT_TYPES.map(eventType => <button type="button" role="option" aria-selected={bookingForm.eventType === eventType} key={eventType} onClick={() => { setBookingForm({ ...bookingForm, eventType, otherEventType: '' }); setBookingEventOpen(false); }} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${bookingForm.eventType === eventType ? 'bg-primary-50 text-primary-700' : 'text-surface-700 hover:bg-surface-50'}`}>{eventType}</button>)}</div>}
+                </div>
+                <input required tabIndex={-1} value={bookingForm.eventType === 'Other' ? bookingForm.otherEventType : bookingForm.eventType} onChange={() => {}} className="pointer-events-none absolute h-0 w-0 opacity-0" aria-hidden="true" />
+                {bookingForm.eventType === 'Other' && <input value={bookingForm.otherEventType} onChange={e => { setBookingForm({ ...bookingForm, otherEventType: e.target.value }); clearBookingError('otherEventType'); }} placeholder="Type your event" className={`input-field mt-2 w-full ${bookingErrors.otherEventType ? 'border-red-500 bg-red-50/40 ring-2 ring-red-100 shadow-[0_0_14px_rgba(239,68,68,0.22)]' : ''}`} />}
+              </label>
+              <label className="text-sm font-bold text-surface-700 md:col-span-2" data-booking-error={bookingErrors.venue ? 'true' : undefined}><span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary-600" />Where is it? <span className="text-red-500">*</span></span>
+                <div className="relative mt-1">
+                  <input required value={bookingForm.venue} onChange={e => { setBookingForm({ ...bookingForm, venue: e.target.value, venueLat: null, venueLng: null }); clearBookingError('venue'); }} placeholder="Venue or address" className={`input-field w-full pr-12 ${bookingErrors.venue ? 'border-red-500 bg-red-50/40 ring-2 ring-red-100 shadow-[0_0_14px_rgba(239,68,68,0.22)]' : ''}`} />
+                  <button type="button" onClick={() => setShowBookingMap(current => !current)} aria-label={showBookingMap ? 'Hide location map' : 'Pin location on map'} title={showBookingMap ? 'Hide location map' : 'Pin location on map'} className={`absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl border bg-white shadow-sm transition hover:bg-surface-50 ${showBookingMap ? 'border-emerald-500 ring-2 ring-emerald-100' : 'border-surface-200'}`} style={{ color: '#15803d' }}><MapPin className="h-4 w-4" strokeWidth={2.5} /></button>
+                </div>
+                {showBookingMap && <div className="mt-3 md:col-span-2"><LocationPicker onLocationSelect={({ address, lat, lng }) => setBookingForm(current => ({ ...current, venue: address || current.venue, venueLat: lat, venueLng: lng }))} initialAddress={bookingForm.venue} /></div>}
+              </label>
+              <label className="text-sm font-bold text-surface-700" data-booking-error={bookingErrors.eventDate ? 'true' : undefined}><span className="flex items-center gap-1.5"><CalendarDays className="h-4 w-4 text-primary-600" />When is it? <span className="text-red-500">*</span></span>
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  <div><span className="mb-1 block text-[11px] font-semibold text-surface-400">Date</span><input required type="date" min={new Date().toISOString().slice(0, 10)} value={bookingForm.eventDate.split('T')[0] || ''} onChange={e => updateBookingDateTime('date', e.target.value)} className={`input-field w-full ${bookingErrors.eventDate ? 'border-red-500 bg-red-50/40 ring-2 ring-red-100 shadow-[0_0_14px_rgba(239,68,68,0.22)]' : ''}`} /></div>
+                  <div><span className="mb-1 block text-[11px] font-semibold text-surface-400">Time</span><input required type="time" value={bookingForm.eventDate.split('T')[1] || ''} onChange={e => updateBookingDateTime('time', e.target.value)} className={`input-field w-full ${bookingErrors.eventDate ? 'border-red-500 bg-red-50/40 ring-2 ring-red-100 shadow-[0_0_14px_rgba(239,68,68,0.22)]' : ''}`} /></div>
+                </div>
+              </label>
+              <label className="text-sm font-bold text-surface-700" data-booking-error={bookingErrors.customerPhone ? 'true' : undefined}><span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-primary-600" />Contact number <span className="text-red-500">*</span></span>
+                <input required type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength="11" value={bookingForm.customerPhone} onChange={e => { setBookingForm({ ...bookingForm, customerPhone: e.target.value.replace(/\D/g, '').slice(0, 11) }); clearBookingError('customerPhone'); }} placeholder="09XXXXXXXXX" className={`input-field mt-1 w-full ${bookingErrors.customerPhone ? 'border-red-500 bg-red-50/40 ring-2 ring-red-100' : ''}`} />
+                {bookingErrors.customerPhone && <span className="mt-1 block text-xs font-bold text-red-600">Enter exactly 11 digits.</span>}
+              </label>
+              <div className="md:col-span-2 rounded-2xl border border-amber-200 bg-amber-50/50 p-4" data-booking-error={bookingErrors.coffeeSelections || bookingErrors.nonCoffeeSelections ? 'true' : undefined}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-black text-surface-900"><Coffee className="h-4 w-4" style={{ color: brandingColor }} />Menu selection</p>
+                    <p className="mt-1 text-xs font-medium text-surface-500">Choose exactly the number of drink types included in your package.</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-surface-500 shadow-sm">{bookingDrinkLimits.coffee} coffee · {bookingDrinkLimits.nonCoffee} non-coffee</span>
+                </div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {[
+                    { key: 'coffeeSelections', title: 'Hot / Iced Coffee', drinks: COFFEE_DRINKS, limit: bookingDrinkLimits.coffee },
+                    { key: 'nonCoffeeSelections', title: 'Non-Coffee', drinks: NON_COFFEE_DRINKS, limit: bookingDrinkLimits.nonCoffee }
+                  ].map(group => (
+                    <div key={group.key}>
+                      <p className="mb-2 text-xs font-black uppercase tracking-wider text-surface-600">{group.title} <span className="font-bold text-surface-400">({group.limit} choice{group.limit === 1 ? '' : 's'})</span></p>
+                      <div className="space-y-2">
+                        {group.drinks.map(drink => {
+                          const selected = bookingForm[group.key].includes(drink);
+                          return <button key={drink} type="button" aria-pressed={selected} onClick={() => toggleBookingDrink(group.key, drink, group.limit)} className={`flex w-full items-center justify-between rounded-xl border-2 px-3 py-2.5 text-left text-sm font-bold transition ${selected ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-white bg-white text-surface-700 hover:border-amber-200'} ${!selected && bookingForm[group.key].length >= group.limit ? 'opacity-50' : ''}`}><span>{drink}</span>{selected && <CheckCircle className="h-4 w-4 text-amber-600" />}</button>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {(bookingErrors.coffeeSelections || bookingErrors.nonCoffeeSelections) && <p className="mt-3 text-xs font-bold text-red-600">Please select the required number of coffee and non-coffee drinks for this package.</p>}
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs font-medium text-blue-900">Want a custom drink or special menu? Please inquire with us on Facebook.</p>
+                  <a href="https://www.facebook.com/hometownbrew24" target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#1877F2] px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-[#166fe5]">
+                    <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 21v-8h2.75l.4-3h-3.15V8.08c0-.87.24-1.46 1.5-1.46h1.75V3.94c-.3-.04-1.34-.13-2.55-.13-2.52 0-4.25 1.54-4.25 4.37V10H7v3h2.95v8h3.55Z" /></svg>
+                    Inquire on Facebook
+                  </a>
+                </div>
+              </div>
+              <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/30 p-4 md:col-span-2">
+                <p className="flex items-center gap-2 text-sm font-black text-emerald-900">Payment choice <span className="text-red-500">*</span><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">Required</span></p>
+                <p className="mt-1 text-xs font-medium text-emerald-700">Choose how much you want to pay for this package.</p>
+                <div data-booking-error={bookingErrors.paymentMode ? 'true' : undefined} className={`mt-2 grid gap-2 rounded-2xl ${bookingErrors.paymentMode ? 'ring-2 ring-red-300 shadow-[0_0_14px_rgba(239,68,68,0.22)]' : ''} sm:grid-cols-2`}>
+                  {[{ id: 'full_payment', label: 'Full payment', hint: bookingPackage.priceText || 'Full package amount' }, { id: 'downpayment', label: 'Downpayment', hint: 'Fixed ₱1,000 deposit' }].map(option => {
+                    const selected = bookingForm.paymentMode === option.id;
+                    return <button key={option.id} type="button" aria-pressed={selected} onClick={() => { setBookingForm({ ...bookingForm, paymentMode: option.id }); clearBookingError('paymentMode'); }} className={`rounded-2xl border-2 p-3 text-left transition ${selected ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100' : 'border-surface-200 bg-white hover:border-surface-300'}`}><span className={`flex items-center justify-between text-sm font-black ${selected ? 'text-emerald-800' : 'text-surface-900'}`}>{option.label}{selected && <CheckCircle className="h-4 w-4 text-emerald-600" />}</span><span className={`mt-0.5 block text-[11px] font-medium ${selected ? 'text-emerald-700' : 'text-surface-500'}`}>{option.hint}</span></button>;
+                  })}
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-sm font-bold text-surface-700">How would you like to pay?</p>
+                <div className={`mt-2 grid gap-2 rounded-2xl ${bookingErrors.paymentMethod ? 'ring-2 ring-red-100' : ''} sm:grid-cols-3`}>
+                  {[{ id: 'cash', label: 'Cash', hint: 'Pay at the store' }, { id: 'gcash', label: 'GCash', hint: branding?.gcashQr ? 'QR available' : 'Currently unavailable' }, { id: 'maya', label: 'Maya', hint: branding?.mayaQr ? 'QR available' : 'QR not uploaded' }].map(method => {
+                    const unavailable = method.id !== 'cash' && !branding?.[method.id === 'gcash' ? 'gcashQr' : 'mayaQr'];
+                    const selected = bookingForm.paymentMethod === method.id;
+                    return <button key={method.id} type="button" aria-pressed={selected} disabled={unavailable} onClick={() => { setBookingForm({ ...bookingForm, paymentMethod: method.id }); clearBookingError('paymentMethod'); }} className={`rounded-2xl border-2 p-3 text-left transition ${selected ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100' : 'border-surface-200 bg-white hover:border-surface-300'} ${unavailable ? 'cursor-not-allowed opacity-45' : ''}`}><span className={`flex items-center justify-between text-sm font-black ${selected ? 'text-emerald-800' : 'text-surface-900'}`}>{method.label}{selected && <CheckCircle className="h-4 w-4 text-emerald-600" />}</span><span className={`mt-0.5 block text-[11px] font-medium ${selected ? 'text-emerald-700' : 'text-surface-500'}`}>{method.hint}</span></button>;
+                  })}
+                </div>
+              </div>
+              <label className="text-sm font-bold text-surface-700 md:col-span-2">Location landmark or directions <span className="font-medium text-surface-400">(optional)</span>
+                <input value={bookingForm.locationGuide} onChange={e => setBookingForm({ ...bookingForm, locationGuide: e.target.value })} placeholder="e.g. Near the church, use the side gate" className="input-field mt-1 w-full" />
+              </label>
+              <label className="text-sm font-bold text-surface-700 md:col-span-2"><span className="flex items-center gap-1.5"><FileText className="h-4 w-4 text-primary-600" />Additional details <span className="font-medium text-surface-400">(optional)</span></span>
+                <textarea rows="3" value={bookingForm.notes} onChange={e => setBookingForm({ ...bookingForm, notes: e.target.value })} placeholder="Tell us anything else we should know" className="input-field mt-1 w-full resize-none" />
+              </label>
+            </div>
+
+            {bookingMessage && <p className={`mt-4 rounded-xl p-3 text-sm font-bold ${bookingMessage.includes('sent') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{bookingMessage}</p>}
+            <button type="submit" disabled={bookingSubmitting} className="sticky bottom-0 z-20 mt-7 flex w-full items-center justify-center rounded-2xl border-t-8 border-white py-3.5 font-black text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:translate-y-0 disabled:opacity-50" style={{ backgroundColor: brandingColor }}>
+              {bookingSubmitting ? 'Sending request...' : 'Confirm Booking Request'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Order History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pb-24 md:p-6">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowHistoryModal(false)}></div>
+          <div className="bg-white rounded-[28px] w-full max-w-3xl max-h-[90vh] overflow-y-auto relative z-10 shadow-2xl animate-fade-in-up scrollbar-hide">
+            <div className="sticky top-0 z-20 flex justify-between items-center p-5 md:p-6 bg-white/95 backdrop-blur-md border-b border-surface-100">
+              <div>
+                <h2 className="text-xl md:text-2xl font-heading font-black text-surface-900 leading-tight">Order <span style={{ color: brandingColor }}>History</span></h2>
+                <p className="text-surface-500 font-medium mt-0.5 text-xs md:text-sm">Review your recent customer orders.</p>
+              </div>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="w-8 h-8 md:w-10 md:h-10 bg-surface-100 hover:bg-surface-200 rounded-full flex items-center justify-center text-surface-600 transition-all active:scale-95 flex-shrink-0"
+              >
+                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-4 md:p-6">
+              {historyLoading ? (
+                <div className="py-16 text-center text-surface-500 font-medium">Loading order history...</div>
+              ) : historyError ? (
+                <div className="py-16 text-center">
+                  <p className="text-red-600 font-bold">{historyError}</p>
+                </div>
+              ) : orderHistory.length === 0 ? (
+                <div className="py-16 text-center">
+                  <p className="text-surface-500 font-medium">No order history yet.</p>
+                </div>
+              ) : (
+                <>
+                <div className="space-y-4">
+                  {orderHistory.map((order) => (
+                    <div key={order.id} className={`rounded-2xl border p-4 md:p-5 ${order.historyType === 'booking' ? 'border-emerald-200 bg-emerald-50/50' : 'border-surface-200 bg-surface-50/60'}`}>
+                      {order.historyType === 'booking' ? (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div><p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1">Confirmed booking</p><p className="font-black text-surface-900">{order.package?.name || 'Event package'}</p><p className="text-xs text-surface-500 mt-1">Requested {formatDate(order.createdAt)}</p></div>
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${isBookingFullyPaid(order) ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>{isBookingFullyPaid(order) ? 'Fully Paid' : order.status === 'accepted' ? 'Accepted' : order.status}</span>
+                          </div>
+                          <div className="mt-4 grid gap-2 border-t border-emerald-100 pt-4 text-sm text-surface-600 sm:grid-cols-2"><p><strong className="text-surface-900">Event:</strong> {order.eventType}</p><p><strong className="text-surface-900">Date:</strong> {formatDate(order.eventDate)}</p><p className="sm:col-span-2"><strong className="text-surface-900">Venue:</strong> {order.venue}</p>{order.locationGuide && <p className="sm:col-span-2"><strong className="text-surface-900">Location guide:</strong> {order.locationGuide}</p>}<p><strong className="text-surface-900">Payment:</strong> {order.paymentMethod === 'gcash' ? 'GCash' : order.paymentMethod === 'maya' ? 'Maya' : 'Cash'}</p>{getPackagePax(order.package) && <p><strong className="text-surface-900">Package pax:</strong> {getPackagePax(order.package)}</p>}</div>
+                        </>
+                      ) : (
+                        <>
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Order Number</p>
+                          <p className="font-black text-surface-900">{order.orderNumber}</p>
+                          <p className="text-xs text-surface-500 mt-1">{formatDate(order.createdAt)}</p>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Total</p>
+                          <p className="font-black text-surface-900">{formatCurrency(order.total || 0)}</p>
+                          <p className="text-xs text-surface-500 mt-1 capitalize">{order.status || 'pending'}</p>
+                        </div>
+                      </div>
+
+                      {Array.isArray(order.items) && order.items.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-surface-200 space-y-2">
+                          {order.items.map((item, idx) => (
+                            <div key={item.id || idx} className="flex items-center justify-between gap-3 text-sm">
+                              <div className="min-w-0">
+                                <p className="font-bold text-surface-800 truncate">{item.productName || item.name || 'Item'}</p>
+                                <p className="text-xs text-surface-500">Qty {item.quantity || 1}</p>
+                              </div>
+                              <p className="font-bold text-surface-700 shrink-0">{formatCurrency(item.subtotal || item.total || 0)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {historyMeta.totalPages > 1 && (
+                  <div className="mt-6 flex items-center justify-between gap-3 border-t border-surface-200 pt-4">
+                    <button
+                      type="button"
+                      disabled={historyPage === 1 || historyLoading}
+                      onClick={() => setHistoryPage(page => Math.max(1, page - 1))}
+                      className="rounded-xl border border-surface-200 px-3 py-2 text-xs font-black text-surface-600 transition hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-xs font-bold text-surface-400">
+                      Page {historyMeta.page} of {historyMeta.totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={historyPage >= historyMeta.totalPages || historyLoading}
+                      onClick={() => setHistoryPage(page => Math.min(historyMeta.totalPages, page + 1))}
+                      className="rounded-xl bg-surface-900 px-3 py-2 text-xs font-black text-white transition hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

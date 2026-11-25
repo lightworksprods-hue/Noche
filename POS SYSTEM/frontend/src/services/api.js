@@ -1,0 +1,240 @@
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api');
+
+const api = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' }
+});
+
+// Auth & Tenant interceptor
+api.interceptors.request.use(config => {
+
+  // TENANT DETECTION: Extract company name from URL (e.g. mcdonalds.your-pos.com)
+  const hostname = window.location.hostname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const tenantQuery = urlParams.get('tenant');
+
+  let tenantSlug = 'project-million'; // Default
+  const isPlatformDomain = hostname.includes('vercel.app') || hostname.includes('onrender.com') || hostname.includes('workers.dev');
+
+  if (tenantQuery) {
+    tenantSlug = tenantQuery;
+  } else if (!isPlatformDomain && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    tenantSlug = hostname.split('.')[0];
+  }
+
+  config.headers['x-tenant-slug'] = tenantSlug;
+
+  // Safari on iPad can omit the cross-origin auth cookie even when login
+  // succeeded. The JWT is also stored locally by AuthContext, so send it as
+  // a header fallback for API requests that need authentication.
+  const token = localStorage.getItem('pos_token');
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  // If we have a slug, we should let the backend resolve the ID by slug 
+  // or use the saved ID only if it matches the current session logic
+  const savedTenantId = localStorage.getItem('tenant_id');
+  if (savedTenantId && !tenantQuery) {
+    config.headers['x-tenant-id'] = savedTenantId;
+  }
+  // If tenantQuery exists, we DONT send a hardcoded ID so the backend uses the Slug
+
+  return config;
+});
+
+// Auth
+export const login = (data) => api.post('/auth/login', {
+  ...data,
+  deviceToken: localStorage.getItem('pos_device_token') || undefined
+});
+export const googleLogin = (data) => api.post('/auth/google', data);
+export const register = (data) => api.post('/auth/register', data);
+export const registerCustomer = (data) => api.post('/auth/register-customer', data);
+export const getMe = () => api.get('/auth/me');
+export const logoutRequest = () => api.post('/auth/logout');
+export const changePassword = (data) => api.post('/auth/change-password', data);
+export const requestOTP = (data) => api.post('/auth/request-otp', data);
+export const verifyOTP = (data) => api.post('/auth/verify-otp', data);
+export const checkOTP = (data) => api.post('/auth/check-otp', data);
+export const resetPassword = (data) => api.post('/auth/reset-password', data);
+export const verifyRegistration = (data) => api.post('/auth/verify-registration', data);
+export const resendRegistrationOTP = (data) => api.post('/auth/resend-registration-otp', data);
+
+// Device Management (Admin)
+export const registerDevice = (data) => api.post('/auth/devices/register', data);
+export const getDevices = () => api.get('/auth/devices');
+export const revokeDevice = (id) => api.post(`/auth/devices/${id}/revoke`);
+export const deleteDevice = (id) => api.delete(`/auth/devices/${id}`);
+
+
+// Products (Public)
+export const getProducts = () => api.get('/products');
+export const getProduct = (id) => api.get(`/products/${id}`);
+export const getPublicTenant = (slug) => api.get(`/public/tenant/${slug}`);
+export const trackVisit = (slug) => api.post(`/public/tenant/${slug}/visit`);
+
+// Categories
+export const getCategories = () => api.get('/categories');
+
+// Orders (Kiosk)
+export const createOrder = (data) => api.post('/orders', data);
+export const getOrder = (orderNumber) => api.get(`/orders/${orderNumber}`);
+export const cancelOrder = (orderNumber) => api.post(`/orders/${orderNumber}/cancel`);
+export const getOrderHistory = ({ page = 1, limit = 10 } = {}) => api.get('/orders/history', { params: { page, limit } });
+export const confirmDeliveryReceived = (orderNumber) => api.post(`/orders/${orderNumber}/received`);
+
+// Cashier
+export const getCashierOrders = (status) => api.get(`/cashier/orders${status ? `?status=${status}` : ''}`);
+export const confirmOrder = (id, data) => api.post(`/cashier/orders/${id}/confirm`, data);
+export const cashierCancelOrder = (id, data) => api.post(`/cashier/orders/${id}/cancel`, data);
+export const calculatePayment = (data) => api.post('/cashier/calculate', data);
+export const updateOrderStatus = (id, status) => {
+  if (status === 'on_the_way') {
+    return api.post(`/cashier/orders/${id}/dispatch`);
+  }
+  return api.post(`/cashier/orders/${id}/status`, { status });
+};
+export const getCashierActiveShift = () => api.get('/cashier/shift/current');
+export const cashierTimeIn = (data) => api.post('/cashier/shift/time-in', data);
+export const cashierTimeOut = (data) => api.post('/cashier/shift/time-out', data);
+export const getCashierShiftHistory = () => api.get('/cashier/shift/history');
+
+// Kitchen
+export const getKitchenOrders = () => api.get('/kitchen/orders');
+export const startPreparing = (id, prepTime) => api.post(`/kitchen/orders/${id}/start`, { prepTime });
+export const completeOrder = (id) => api.post(`/kitchen/orders/${id}/complete`);
+export const markServed = (id) => api.post(`/kitchen/orders/${id}/served`);
+
+// Admin
+export const getAdminOrders = (status, page, search = '') => {
+  let url = `/admin/orders?status=${status || 'all'}&page=${page || 1}&limit=10`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  return api.get(url);
+};
+export const updateAdminOrderStatus = (id, status) => api.patch(`/admin/orders/${id}/status`, { status });
+export const updateAdminOrderPayment = (id, paymentStatus) => api.patch(`/admin/orders/${id}/payment`, { paymentStatus });
+export const getAdminProducts = () => api.get('/admin/products');
+export const createProduct = (data) => api.post('/admin/products', data);
+export const updateProduct = (id, data) => api.put(`/admin/products/${id}`, data);
+export const deleteProduct = (id) => api.delete(`/admin/products/${id}`);
+export const hardDeleteProduct = (id) => api.delete(`/admin/products/${id}/hard`);
+export const getStaff = () => api.get('/admin/staff');
+export const createStaff = (data) => api.post('/admin/staff', data);
+export const updateStaff = (id, data) => api.put(`/admin/staff/${id}`, data);
+export const deleteStaff = (id) => api.delete(`/admin/staff/${id}`);
+export const getInventory = () => api.get('/admin/inventory');
+export const getAddons = () => api.get('/admin/addons');
+export const createAddon = (data) => api.post('/admin/addons', data);
+export const updateAddon = (id, data) => api.put(`/admin/addons/${id}`, data);
+export const deleteAddon = (id) => api.delete(`/admin/addons/${id}`);
+
+// Raw Ingredients & Recipes
+export const getRawIngredients = () => api.get('/inventory/ingredients');
+export const createRawIngredient = (data) => api.post('/inventory/ingredients', data);
+export const updateRawIngredient = (id, data) => api.put(`/inventory/ingredients/${id}`, data);
+export const deleteRawIngredient = (id) => api.delete(`/inventory/ingredients/${id}`);
+export const getRecipes = (productId) => api.get(`/inventory/ingredients/recipes/${productId}`);
+export const addRecipeItem = (data) => api.post('/inventory/ingredients/recipes', data);
+export const removeRecipeItem = (id) => api.delete(`/inventory/ingredients/recipes/${id}`);
+
+export const restockProduct = (id, data) => api.post(`/admin/inventory/${id}/restock`, data);
+export const getAuditLogs = (params = {}) => api.get('/admin/audit-logs', { params });
+export const getInventoryLogs = (page = 1, limit = 10) => api.get('/admin/inventory/logs', { params: { page, limit } });
+export const getSettings = () => api.get('/admin/settings');
+export const updateSettings = (settings) => api.post('/admin/settings', { settings });
+export const uploadImage = (data) => api.post('/admin/upload-image', data);
+
+// Categories Admin
+export const createCategory = (data) => api.post('/categories', data);
+export const updateCategory = (id, data) => api.put(`/categories/${id}`, data);
+export const deleteCategory = (id) => api.delete(`/categories/${id}`);
+
+// Reports
+export const getDailyReport = (days) => api.get(`/reports/daily?days=${days || 7}`);
+export const getBestsellers = (days = 30) => api.get(`/reports/bestsellers?days=${days}`);
+export const getCategoryProfitability = (days = 30) => api.get(`/reports/category-profitability?days=${days}`);
+export const getAdminSummary = () => api.get('/reports/summary');
+export const getAdminNotifications = () => api.get('/admin/notifications');
+export const getKitchenTimes = () => api.get('/reports/kitchen-times');
+export const getForecasting = () => api.get('/reports/forecasting');
+export const getSalesByDate = (date) => api.get(`/reports/sales-by-date?date=${date}`);
+export const getAdminShifts = (params) => api.get('/admin/shifts', { params });
+export const updateStaffPayroll = (userId, data) => api.put(`/admin/payroll/${userId}`, data);
+export const getStaffPayroll = (params) => api.get('/admin/payroll', { params });
+
+// Suppliers
+export const getSuppliers = () => api.get('/suppliers');
+export const createSupplier = (data) => api.post('/suppliers', data);
+export const updateSupplier = (id, data) => api.put(`/suppliers/${id}`, data);
+export const deleteSupplier = (id) => api.delete(`/suppliers/${id}`);
+
+// Combos
+export const getComboOptions = (productId) => api.get(`/admin/products/${productId}/combo-options`);
+export const updateComboOptions = (productId, data) => api.post(`/admin/products/${productId}/combo-options`, data);
+
+// Superadmin
+export const getTenants = () => api.get('/superadmin/tenants');
+export const createTenant = (data) => api.post('/superadmin/tenants', data);
+export const updateTenant = (id, data) => api.patch(`/superadmin/tenants/${id}`, data);
+export const getBetaApplications = () => api.get('/superadmin/beta-applications');
+
+// Feedback
+export const submitFeedback = (data) => api.post('/feedback/submit', data);
+export const getFeedbackStats = () => api.get('/feedback/stats');
+export const requestPayment = (orderId, data) => api.post(`/cashier/orders/${orderId}/request-payment`, data);
+export const hardDeleteOrder = (id) => api.delete(`/admin/orders/${id}`);
+
+// Public Beta
+export const submitBetaApplication = (data) => api.post('/public/beta/apply', data);
+
+// Push Notifications
+export const subscribeToPush = (data) => api.post('/push/subscribe', data);
+export const getVapidKey = () => api.get('/push/vapid-key');
+
+// Rider
+export const getAvailableRiderOrders = () => api.get('/rider/available');
+export const getActiveRiderOrders = () => api.get('/rider/active');
+export const getHistoryRiderOrders = () => api.get('/rider/history');
+export const pickupOrder = (id) => api.post(`/rider/orders/${id}/pickup`);
+export const deliverOrder = (id) => api.post(`/rider/orders/${id}/delivered`);
+export const notifyArrival = (id) => api.post(`/rider/orders/${id}/notify-arrival`);
+
+// Event Packages
+export const getAdminPackages = () => api.get('/admin/packages');
+export const createAdminPackage = (data) => api.post('/admin/packages', data);
+export const updateAdminPackage = (id, data) => api.put(`/admin/packages/${id}`, data);
+export const deleteAdminPackage = (id) => api.delete(`/admin/packages/${id}`);
+export const getPublicPackages = (slug) => api.get(`/public/tenant/${slug}/packages`);
+export const createPackageBooking = (data) => api.post('/bookings', data);
+export const getBookingAvailability = () => api.get('/bookings/availability');
+export const getMyPackageBookings = () => api.get('/bookings/mine');
+export const submitPackagePayment = (id, reference) => api.post(`/bookings/${id}/payment`, { reference });
+  export const getAdminBookings = (archived = false, page = 1, limit = 10) => api.get('/admin/bookings', { params: { archived, page, limit } });
+  export const deleteAdminBooking = (id) => api.delete(`/admin/bookings/${id}`);
+export const updateAdminBookingStatus = (id, data) => api.patch(`/admin/bookings/${id}/status`, data);
+export const requestAdminBookingPayment = (id, data) => api.post(`/admin/bookings/${id}/payment-request`, data);
+export const updateAdminBookingPaymentStatus = (id, data) => api.patch(`/admin/bookings/${id}/payment-status`, data);
+
+// Promos
+export const getPromos = () => api.get('/promos');
+export const createPromo = (data) => api.post('/promos', data);
+export const updatePromo = (id, data) => api.put(`/promos/${id}`, data);
+export const deletePromo = (id) => api.delete(`/promos/${id}`);
+export const validatePromo = (data) => api.post('/promos/validate', data);
+
+// Reports Export
+export const exportSalesCSV = () => api.get('/reports/export/sales', { responseType: 'blob' });
+export const exportInventoryCSV = () => api.get('/reports/export/inventory', { responseType: 'blob' });
+export const exportSalesExcel = (date) => api.get('/reports/export/sales.xlsx', { params: { date }, responseType: 'blob' });
+export const exportInventoryExcel = (type = 'products') => api.get('/reports/export/inventory.xlsx', { params: { type }, responseType: 'blob' });
+export const exportAddonsExcel = (params = {}) => api.get('/reports/export/addons.xlsx', { params, responseType: 'blob' });
+export const exportSuppliersExcel = () => api.get('/reports/export/suppliers.xlsx', { responseType: 'blob' });
+export const exportShiftsExcel = () => api.get('/reports/export/shifts.xlsx', { responseType: 'blob' });
+export const exportPayrollExcel = () => api.get('/reports/export/payroll.xlsx', { responseType: 'blob' });
+export const exportBookingsExcel = () => api.get('/reports/export/bookings.xlsx', { responseType: 'blob' });
+
+export default api;

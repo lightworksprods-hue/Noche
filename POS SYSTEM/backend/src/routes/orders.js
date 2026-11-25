@@ -1,0 +1,897 @@
+const express = require('express');
+const router = express.Router();
+const prisma = require('../lib/prisma');
+
+function generateOrderNumber() {
+  const prefix = 'POS-0';
+  const random = Math.floor(1000 + Math.random() * 9000); // 4 random digits
+  return `${prefix}${random}`;
+}
+
+
+// GET /api/orders/history — Get logged-in customer's order history
+const { authenticate } = require('../middleware/auth');
+router.get('/history', authenticate, async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+    const where = { customerId: req.user.id };
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: { items: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit
+      }),
+      prisma.order.count({ where })
+    ]);
+    res.json({
+      success: true,
+      data: orders,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    console.error('History error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load order history.' });
+  }
+});
+
+// POST /api/orders — Kiosk: Place new order
+router.post('/', async (req, res) => {
+  try {
+    const { customerId, customerName, customerEmail, customerPhone, orderType, paymentMethod, paymentMode, items, notes, deliveryAddress, deliveryLat, deliveryLng, deliveryFee, paymentReference, paymentAmount, promoCode, clientOrderId } = req.body;
+
+    const isCounterOrder = req.body.source === 'counter';
+    if (!isCounterOrder && !['pickup', 'delivery'].includes(orderType)) {
+      return res.status(400).json({ success: false, message: 'Please select pickup or delivery.' });
+    }
+
+    const isPointsOrder = paymentMethod === 'points';
+    if (!isCounterOrder && !isPointsOrder && !['cash', 'qrph'].includes(paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'Choose Cash or QR Ph as your payment method.' });
+    }
+
+    if (!isCounterOrder && !isPointsOrder && !['downpayment', 'full_payment'].includes(paymentMode)) {
+      return res.status(400).json({ success: false, message: 'Choose either a 50% downpayment or full payment.' });
+    }
+
+    if (!isCounterOrder && !isPointsOrder && paymentMethod === 'qrph' && !/^\d{4}$/.test(String(paymentReference || ''))) {
+      return res.status(400).json({ success: false, message: 'Enter the last 4 digits of your payment reference.' });
+    }
+
+    if (typeof notes === 'string' && notes.length > 150) {
+      return res.status(400).json({ success: false, message: 'Order notes must be 150 characters or fewer.' });
+    }
+
+    if (!isCounterOrder) {
+      if (!customerName || customerName.trim().length < 2) {
+        return res.status(400).json({ success: false, message: 'Full name is required.' });
+      }
+      if (!/^09\d{9}$/.test(String(customerPhone || '').trim())) {
+        return res.status(400).json({ success: false, message: 'Enter a valid 11-digit phone number starting with 09.' });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(customerEmail || '').trim())) {
+        return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+      }
+    }
+
+    // Customer-created delivery orders must be prepaid. Counter POS orders may use COD.
+    if (!isCounterOrder && orderType === 'delivery' && !deliveryAddress) {
+      return res.status(400).json({ success: false, message: 'A delivery address is required.' });
+    }
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Order must have at least one item.' });
+    }
+
+    // Determine Tenant ID securely from slug
+    const tenantSlug = req.headers['x-tenant-slug'];
+    if (!tenantSlug) {
+      return res.status(400).json({ success: false, message: 'Shop identification is required.' });
+    }
+
+    const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: 'Shop not found.' });
+    }
+    const tenantId = tenant.id;
+
+    // Offline cashier retries reuse this ID so a request cannot create a duplicate sale.
+    if (clientOrderId) {
+      const existingOrder = await prisma.order.findFirst({ where: { tenantId, clientOrderId }, include: { items: true } });
+      if (existingOrder) return res.json({ success: true, data: existingOrder, alreadyExists: true });
+    }
+
+    // Generate unique random order number starting with 0
+    let orderNumber;
+    let exists = true;
+    while (exists) {
+      orderNumber = generateOrderNumber();
+      const check = await prisma.order.findUnique({ where: { orderNumber } });
+      exists = !!check;
+    }
+
+    const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+    const orderItems = [];
+    let subtotal = 0;
+
+    for (const item of items) {
+      const pid = item.productId || item.id;
+      const product = await prisma.product.findUnique({
+        where: { id: parseInt(pid) },
+        include: { addons: true }
+      });
+
+      if (!product) {
+        return res.status(400).json({ success: false, message: `Product ID ${pid} not found.` });
+      }
+
+      if (product.stock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for ${product.name}. Only ${product.stock} left.`
+        });
+      }
+
+      // Resolve size-specific pricing
+      let resolvedPrice = product.price;
+      if (item.size && product.sizes && Array.isArray(product.sizes)) {
+        const sizeEntry = product.sizes.find(s => s.name === item.size);
+        if (sizeEntry) {
+          if (sizeEntry.available === false) {
+            return res.status(400).json({ success: false, message: `Size "${item.size}" for ${product.name} is currently unavailable.` });
+          }
+          resolvedPrice = parseFloat(sizeEntry.price);
+        }
+      }
+
+      let itemSubtotal = resolvedPrice * item.quantity;
+
+      // Zero out cash cost if it's a redemption
+      if (item.isRedemption && product.pointsCost) {
+        itemSubtotal = 0;
+      }
+
+      // Calculate addon prices
+      let selectedAddons = [];
+      const addonsInput = item.addons || item.selectedAddons || [];
+      if (addonsInput.length > 0 && !item.isRedemption) {
+        for (const addonId of addonsInput) {
+          // Handle both full addon objects and just IDs
+          const id = typeof addonId === 'object' ? addonId.id : addonId;
+          const addon = product.addons.find(a => a.id === id);
+          if (addon) {
+            selectedAddons.push({ 
+              name: addon.name, 
+              price: addon.price,
+              rawIngredientId: addon.rawIngredientId,
+              quantityUsed: addon.quantityUsed
+            });
+            itemSubtotal += addon.price * item.quantity;
+          }
+        }
+      }
+
+      itemSubtotal = round2(itemSubtotal);
+      subtotal += itemSubtotal;
+
+      orderItems.push({
+        productId: product.id,
+        productName: product.name,
+        productPrice: resolvedPrice,
+        quantity: item.quantity,
+        subtotal: itemSubtotal,
+        size: item.size || null,
+        flavor: item.flavor || null,
+        notes: item.notes || null,
+        addons: selectedAddons.length > 0 ? JSON.stringify(selectedAddons) : null,
+        comboChoices: item.comboChoices ? (typeof item.comboChoices === 'string' ? item.comboChoices : JSON.stringify(item.comboChoices)) : null,
+        isRedemption: item.isRedemption || false
+      });
+    }
+
+    const taxRate = parseFloat(process.env.TAX_RATE || '0.00');
+    
+    // Validate Promo Code
+    let discountAmount = 0;
+    let appliedPromoId = null;
+    
+    if (promoCode && !tenant.saPromoDisabled) {
+      if (!customerId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Promo codes are exclusively available for registered members. Please log in or create an account to use promo codes.'
+        });
+      }
+
+      const customerCheck = await prisma.user.findUnique({
+        where: { id: parseInt(customerId, 10) }
+      });
+
+      if (!customerCheck || !customerCheck.active) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid customer account. Please log in to use promo codes.'
+        });
+      }
+
+      const promo = await prisma.promoCode.findUnique({
+        where: { tenantId_code: { tenantId, code: promoCode.toUpperCase() } }
+      });
+      
+      if (!promo || !promo.isActive) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired promo code.' });
+      }
+
+      const now = new Date();
+      if (promo.startDate && now < promo.startDate) {
+        return res.status(400).json({ success: false, message: 'This promo code is not yet active.' });
+      }
+      if (promo.endDate && now > promo.endDate) {
+        return res.status(400).json({ success: false, message: 'This promo code has expired.' });
+      }
+      if (promo.maxUses && promo.currentUses >= promo.maxUses) {
+        return res.status(400).json({ success: false, message: 'This promo code has reached its overall usage limit.' });
+      }
+
+      // Check per-user limit
+      if (promo.maxUsesPerUser && promo.maxUsesPerUser > 0) {
+        const userPromoUses = await prisma.order.count({
+          where: {
+            tenantId,
+            customerId: customerCheck.id,
+            discountType: 'promo',
+            status: { not: 'cancelled' },
+            OR: [
+              { promoCode: promo.code },
+              { notes: { contains: `Promo: ${promo.code}` } }
+            ]
+          }
+        });
+
+        if (userPromoUses >= promo.maxUsesPerUser) {
+          return res.status(400).json({
+            success: false,
+            message: `You have reached your personal usage limit (${promo.maxUsesPerUser} time${promo.maxUsesPerUser > 1 ? 's' : ''}) for promo code ${promo.code}.`
+          });
+        }
+      }
+
+      // Re-fetch products to verify category and product targeting properly
+      let applicableSubtotal = 0;
+      for (const item of orderItems) {
+        let isApplicable = false;
+        const p = await prisma.product.findUnique({ where: { id: parseInt(item.productId, 10) } });
+        
+        if (promo.appliesTo === 'ALL') {
+          isApplicable = true;
+        } else if (promo.appliesTo === 'PRODUCT' && p && promo.targetId && parseInt(promo.targetId, 10) === parseInt(p.id, 10)) {
+          isApplicable = true;
+        } else if (promo.appliesTo === 'CATEGORY' && p && promo.targetId && parseInt(promo.targetId, 10) === parseInt(p.categoryId, 10)) {
+          isApplicable = true;
+        }
+        
+        if (isApplicable) applicableSubtotal += item.subtotal;
+      }
+
+      if (applicableSubtotal === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'This promo code does not apply to any items in your cart.'
+        });
+      }
+
+      if (promo.type === 'PERCENTAGE') {
+        discountAmount = applicableSubtotal * (promo.value / 100);
+      } else if (promo.type === 'FIXED') {
+        discountAmount = Math.min(applicableSubtotal, promo.value);
+      }
+      
+      if (discountAmount > 0) {
+        appliedPromoId = promo.id;
+      }
+    }
+
+    let total = subtotal + (deliveryFee ? parseFloat(deliveryFee) : 0) - discountAmount;
+    if (total < 0) total = 0;
+
+    // Recalculate tax based on discounted subtotal (assuming tax is after discount)
+    const taxableAmount = subtotal - discountAmount;
+    let taxAmount = taxRate > 0 && taxableAmount > 0 ? (taxableAmount - (taxableAmount / (1 + taxRate))) : 0;
+
+    // Round monetary values to 2 decimals to avoid FP rounding issues
+    discountAmount = round2(discountAmount || 0);
+    taxAmount = round2(taxAmount || 0);
+    total = round2(total || 0);
+
+    // Handle Loyalty Redemptions & Role Check
+    let validCustomerId = null;
+    let pointsToDeduct = 0;
+
+    // Calculate points to deduct for redemptions first
+    for (const item of orderItems) {
+      if (item.isRedemption) {
+        if (!customerId) {
+          // GUESTS CANNOT REDEEM
+          item.isRedemption = false;
+          continue;
+        }
+        const product = await prisma.product.findUnique({ where: { id: item.productId } });
+        if (product && product.pointsCost) {
+          pointsToDeduct += (product.pointsCost * item.quantity);
+        }
+      }
+    }
+
+    if (customerId) {
+      const customer = await prisma.user.findUnique({ where: { id: parseInt(customerId) } });
+      if (customer && customer.role === 'customer') {
+        validCustomerId = customer.id;
+
+        if (pointsToDeduct > 0) {
+          if ((customer.points || 0) < pointsToDeduct) {
+            return res.status(400).json({ success: false, message: `Insufficient points. You need ${pointsToDeduct} points but only have ${customer.points || 0}.` });
+          }
+
+          // Deduct points
+          await prisma.user.update({
+            where: { id: customer.id },
+            data: { points: { decrement: pointsToDeduct } }
+          });
+
+          // Emit real-time loyalty update
+          if (req.io && req.io.emitLoyaltyUpdate) {
+            const tenantSlug = req.headers['x-tenant-slug'];
+            const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug || 'project-million' } });
+            req.io.emitLoyaltyUpdate(customer.id, -pointsToDeduct, tenant?.id || 1);
+          }
+        }
+      }
+    } else if (pointsToDeduct > 0) {
+      // This handles edge cases where pointsToDeduct was calculated but customerId is missing/invalid
+      return res.status(400).json({ success: false, message: 'You must be logged in as a customer to redeem points.' });
+    }
+
+    // ── Stock Validation ──
+    // Check every item has sufficient stock BEFORE creating the order
+    const outOfStockItems = [];
+    for (const item of items) {
+      const pid = item.productId || item.id;
+      if (!pid) continue;
+      const product = await prisma.product.findUnique({ 
+        where: { id: parseInt(pid) },
+        include: { addons: { include: { rawIngredient: true } } }
+      });
+      if (product && product.stock < item.quantity) {
+        outOfStockItems.push({ name: product.name, available: Math.max(product.stock, 0), requested: item.quantity });
+      }
+      
+      // Check addon raw ingredient stock
+      const addonsInput = item.addons || item.selectedAddons || [];
+      for (const addonId of addonsInput) {
+        const id = typeof addonId === 'object' ? addonId.id : addonId;
+        const addon = product?.addons?.find(a => a.id === id);
+        if (addon && addon.rawIngredientId && addon.quantityUsed) {
+          const requiredAmt = addon.quantityUsed * item.quantity;
+          if (addon.rawIngredient && addon.rawIngredient.stock < requiredAmt) {
+             outOfStockItems.push({ name: `${addon.name} (Add-on)`, available: Math.max(addon.rawIngredient.stock, 0), requested: requiredAmt });
+          }
+        }
+      }
+
+      // Also check combo sub-item stock
+      if (item.comboChoices) {
+        try {
+          const choices = typeof item.comboChoices === 'string' ? JSON.parse(item.comboChoices) : item.comboChoices;
+          for (const key in choices) {
+            const sub = choices[key];
+            if (sub && sub.id) {
+              const subProduct = await prisma.product.findUnique({ where: { id: parseInt(sub.id) } });
+              if (subProduct && subProduct.stock < item.quantity) {
+                outOfStockItems.push({ name: subProduct.name, available: Math.max(subProduct.stock, 0), requested: item.quantity });
+              }
+            }
+          }
+        } catch (err) { /* ignore parse errors */ }
+      }
+    }
+    if (outOfStockItems.length > 0) {
+      const names = [...new Set(outOfStockItems.map(i => i.name))];
+      return res.status(400).json({
+        success: false,
+        message: `Sorry, the following item(s) just sold out: ${names.join(', ')}. Please update your cart and try again.`,
+        outOfStockItems
+      });
+    }
+
+    const initialStatus = 'pending';
+    const confirmedAt = null;
+    const submittedPayment = !isCounterOrder && !isPointsOrder;
+    const paymentDue = paymentMode === 'full_payment' ? total : round2(total * 0.5);
+
+    const order = await prisma.order.create({
+      data: {
+        tenantId,
+        orderNumber,
+        clientOrderId: clientOrderId || null,
+        customerId: validCustomerId,
+        customerName: customerName || (validCustomerId ? undefined : 'Guest'),
+        customerEmail: customerEmail?.trim() || null,
+        customerPhone: customerPhone?.trim() || null,
+        orderType: orderType || 'dine_in',
+        paymentMethod: paymentMethod || 'cash',
+        paymentMode: paymentMode || 'downpayment',
+        status: initialStatus,
+        paymentStatus: submittedPayment ? 'submitted' : 'paid',
+        confirmedAt,
+        subtotal,
+        discountType: appliedPromoId ? 'promo' : null,
+        discountAmount,
+        promoCode: appliedPromoId ? promoCode.toUpperCase() : null,
+        taxAmount,
+        total,
+        deliveryAddress: deliveryAddress || null,
+        deliveryLat: deliveryLat ? parseFloat(deliveryLat) : null,
+        deliveryLng: deliveryLng ? parseFloat(deliveryLng) : null,
+        deliveryFee: deliveryFee ? parseFloat(deliveryFee) : 0,
+        paymentReference: paymentReference || null,
+        notes: (notes ? notes : '') + (appliedPromoId ? ` (Promo: ${promoCode})` : '') + (submittedPayment ? ` (${paymentMode === 'full_payment' ? 'Full payment' : '50% downpayment'} submitted: ${paymentDue.toFixed(2)})` : ''),
+        items: { create: orderItems }
+      },
+      include: {
+        items: true,
+        customer: { select: { id: true, name: true, points: true } }
+      }
+    });
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        userId: validCustomerId,
+        action: 'order_placed',
+        entityType: 'order',
+        entityId: order.id.toString(),
+        details: `Order #${order.orderNumber} placed by ${order.customerName}. Total: ₱${total.toFixed(2)}${appliedPromoId ? ` (with promo ${promoCode})` : ''}`
+      }
+    });
+
+    // Increment Promo Uses
+    if (appliedPromoId) {
+      await prisma.promoCode.update({
+        where: { id: appliedPromoId },
+        data: { currentUses: { increment: 1 } }
+      });
+    }
+
+    // Decrement stock
+    for (const item of items) {
+      const pid = item.productId || item.id;
+      if (!pid) continue;
+
+      // Update main product stock
+      await prisma.product.update({
+        where: { id: parseInt(pid) },
+        data: { stock: { decrement: item.quantity } }
+      });
+
+      await prisma.inventoryLog.create({
+        data: {
+          productId: parseInt(pid),
+          quantityChange: -item.quantity,
+          reason: 'order',
+          referenceId: order.orderNumber
+        }
+      });
+
+      // Recipe Deduction for Main Product
+      try {
+        const recipes = await prisma.recipeItem.findMany({ where: { productId: parseInt(pid) }, include: { rawIngredient: true } });
+        for (const recipe of recipes) {
+          const deductAmount = (recipe.quantityUsed / Math.max(recipe.rawIngredient?.yield || 1, 0.001)) * item.quantity;
+          await prisma.rawIngredient.update({
+            where: { id: recipe.rawIngredientId },
+            data: { stock: { decrement: deductAmount } }
+          });
+          await prisma.rawIngredientLog.create({
+            data: {
+              rawIngredientId: recipe.rawIngredientId,
+              quantityChange: -deductAmount,
+              reason: 'order',
+              referenceId: order.orderNumber
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Recipe deduction error:', err);
+      }
+
+      // Addon Ingredient Deduction
+      const addonsInput = item.addons || item.selectedAddons || [];
+      if (addonsInput.length > 0) {
+        try {
+          const fullProduct = await prisma.product.findUnique({
+             where: { id: parseInt(pid) },
+             include: { addons: true }
+          });
+          for (const addonId of addonsInput) {
+            const id = typeof addonId === 'object' ? addonId.id : addonId;
+            const addon = fullProduct?.addons?.find(a => a.id === id);
+            if (addon && addon.rawIngredientId && addon.quantityUsed) {
+              const deductAmount = addon.quantityUsed * item.quantity;
+              await prisma.rawIngredient.update({
+                 where: { id: addon.rawIngredientId },
+                 data: { stock: { decrement: deductAmount } }
+              });
+              await prisma.rawIngredientLog.create({
+                 data: {
+                   rawIngredientId: addon.rawIngredientId,
+                   quantityChange: -deductAmount,
+                   reason: 'order',
+                   referenceId: order.orderNumber
+                 }
+              });
+            }
+          }
+        } catch(err) {
+          console.error('Addon stock update error:', err);
+        }
+      }
+
+      // Update sub-item stock if it's a combo
+      if (item.comboChoices) {
+        try {
+          const choices = typeof item.comboChoices === 'string' ? JSON.parse(item.comboChoices) : item.comboChoices;
+          for (const key in choices) {
+            const subProduct = choices[key];
+            if (subProduct && subProduct.id) {
+              await prisma.product.update({
+                where: { id: parseInt(subProduct.id) },
+                data: { stock: { decrement: item.quantity } }
+              });
+
+              await prisma.inventoryLog.create({
+                data: {
+                  productId: parseInt(subProduct.id),
+                  quantityChange: -item.quantity,
+                  reason: 'order',
+                  referenceId: order.orderNumber
+                }
+              });
+
+              // Recipe Deduction for Sub Product
+              const subRecipes = await prisma.recipeItem.findMany({ where: { productId: parseInt(subProduct.id) }, include: { rawIngredient: true } });
+              for (const recipe of subRecipes) {
+                const subDeduct = (recipe.quantityUsed / Math.max(recipe.rawIngredient?.yield || 1, 0.001)) * item.quantity;
+                await prisma.rawIngredient.update({
+                  where: { id: recipe.rawIngredientId },
+                  data: { stock: { decrement: subDeduct } }
+                });
+                await prisma.rawIngredientLog.create({
+                  data: {
+                    rawIngredientId: recipe.rawIngredientId,
+                    quantityChange: -subDeduct,
+                    reason: 'order',
+                    referenceId: order.orderNumber
+                  }
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Combo stock update error:', err);
+        }
+      }
+    }
+
+    // Create notification
+    await prisma.notification.create({
+      data: {
+        orderId: order.id,
+        type: 'order_placed',
+        message: `New order #${order.orderNumber} from ${order.customerName}`,
+        module: 'cashier'
+      }
+    });
+
+    // Emit to cashier via WebSocket
+    const io = req.io;
+    if (io && io.emitNewOrder) {
+      io.emitNewOrder(order);
+    }
+    if (order.status === 'confirmed') {
+      if (io && io.emitOrderUpdate) {
+        io.emitOrderUpdate(order, 'confirmed');
+      }
+    }
+
+    res.status(201).json({ success: true, data: order });
+  } catch (error) {
+    console.error('Create order error:', error);
+    res.status(500).json({ success: false, message: 'Failed to place order.' });
+  }
+});
+
+// GET /api/orders/queue/active — Get active queue (preparing + ready)
+router.get('/queue/active', async (req, res) => {
+  try {
+    const tenantSlug = req.headers['x-tenant-slug'];
+    let whereClause = { status: { in: ['confirmed', 'preparing', 'ready'] } };
+
+    const resolvedSlug = tenantSlug || 'project-million';
+    const tenant = await prisma.tenant.findUnique({ where: { slug: resolvedSlug } });
+    if (tenant) {
+      whereClause.tenantId = tenant.id;
+    } else {
+      // Absolute fallback if tenant is not found in database
+      whereClause.tenantId = 1;
+    }
+
+    const orders = await prisma.order.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        orderNumber: true,
+        customerName: true,
+        orderType: true,
+        status: true,
+        createdAt: true,
+        confirmedAt: true,
+        kitchenStartedAt: true,
+        kitchenCompletedAt: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const preparing = orders.filter(o => ['confirmed', 'preparing'].includes(o.status));
+    const ready = orders.filter(o => o.status === 'ready');
+
+    res.json({
+      success: true,
+      data: { preparing, ready, totalActive: orders.length }
+    });
+  } catch (error) {
+    console.error('Queue error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load queue.' });
+  }
+});
+
+// GET /api/orders/:orderNumber — Get order by number (for kiosk tracking)
+router.get('/:orderNumber', async (req, res) => {
+  try {
+    const tenantSlug = req.headers['x-tenant-slug'];
+    const order = await prisma.order.findUnique({
+      where: { orderNumber: req.params.orderNumber },
+      include: { items: true, payments: true, tenant: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    // SECURITY: Ensure order belongs to the tenant slug from header
+    const resolvedSlug = tenantSlug || 'project-million';
+    if (order.tenant.slug !== resolvedSlug) {
+      return res.status(403).json({ success: false, message: 'Unauthorized access to this order.' });
+    }
+
+    res.json({ success: true, data: order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to load order.' });
+  }
+});
+
+// POST /api/orders/:orderNumber/cancel — Customer cancel (only if pending)
+router.post('/:orderNumber/cancel', async (req, res) => {
+  try {
+    const tenantSlug = req.headers['x-tenant-slug'];
+    const order = await prisma.order.findUnique({
+      where: { orderNumber: req.params.orderNumber },
+      include: { items: true, tenant: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    // SECURITY: Ensure order belongs to the tenant
+    const resolvedSlug = tenantSlug || 'project-million';
+    if (order.tenant.slug !== resolvedSlug) {
+      return res.status(403).json({ success: false, message: 'Unauthorized.' });
+    }
+
+    if (order.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Order can only be cancelled while pending.' });
+    }
+
+    // Restore stock
+    for (const item of order.items) {
+      await prisma.product.update({
+        where: { id: item.productId },
+        data: { stock: { increment: item.quantity } }
+      });
+
+      await prisma.inventoryLog.create({
+        data: {
+          productId: item.productId,
+          quantityChange: item.quantity,
+          reason: 'order',
+          referenceId: `CANCEL-${order.orderNumber}`
+        }
+      });
+
+      // Restore recipe ingredients
+      try {
+        const recipes = await prisma.recipeItem.findMany({ where: { productId: item.productId }, include: { rawIngredient: true } });
+        for (const recipe of recipes) {
+          const addAmount = (recipe.quantityUsed / Math.max(recipe.rawIngredient?.yield || 1, 0.001)) * item.quantity;
+          await prisma.rawIngredient.update({
+            where: { id: recipe.rawIngredientId },
+            data: { stock: { increment: addAmount } }
+          });
+          await prisma.rawIngredientLog.create({
+            data: {
+              rawIngredientId: recipe.rawIngredientId,
+              quantityChange: addAmount,
+              reason: 'order',
+              referenceId: `CANCEL-${order.orderNumber}`
+            }
+          });
+        }
+      } catch (err) { }
+
+      // Restore addon ingredients
+      if (item.addons) {
+        try {
+          const selectedAddons = typeof item.addons === 'string' ? JSON.parse(item.addons) : item.addons;
+          for (const addon of selectedAddons) {
+            if (addon.rawIngredientId && addon.quantityUsed) {
+              const addAmount = addon.quantityUsed * item.quantity;
+              await prisma.rawIngredient.update({
+                where: { id: addon.rawIngredientId },
+                data: { stock: { increment: addAmount } }
+              });
+              await prisma.rawIngredientLog.create({
+                data: {
+                  rawIngredientId: addon.rawIngredientId,
+                  quantityChange: addAmount,
+                  reason: 'order',
+                  referenceId: `CANCEL-${order.orderNumber}`
+                }
+              });
+            }
+          }
+        } catch(err) { }
+      }
+
+      // Restore combo items
+      if (item.comboChoices) {
+        try {
+          const choices = typeof item.comboChoices === 'string' ? JSON.parse(item.comboChoices) : item.comboChoices;
+          for (const key in choices) {
+            const subProduct = choices[key];
+            if (subProduct && subProduct.id) {
+              await prisma.product.update({
+                where: { id: parseInt(subProduct.id) },
+                data: { stock: { increment: item.quantity } }
+              });
+              await prisma.inventoryLog.create({
+                data: {
+                  productId: parseInt(subProduct.id),
+                  quantityChange: item.quantity,
+                  reason: 'order',
+                  referenceId: `CANCEL-${order.orderNumber}`
+                }
+              });
+
+              // Restore combo recipe items
+              const subRecipes = await prisma.recipeItem.findMany({ where: { productId: parseInt(subProduct.id) }, include: { rawIngredient: true } });
+              for (const recipe of subRecipes) {
+                const subAdd = (recipe.quantityUsed / Math.max(recipe.rawIngredient?.yield || 1, 0.001)) * item.quantity;
+                await prisma.rawIngredient.update({
+                  where: { id: recipe.rawIngredientId },
+                  data: { stock: { increment: subAdd } }
+                });
+                await prisma.rawIngredientLog.create({
+                  data: {
+                    rawIngredientId: recipe.rawIngredientId,
+                    quantityChange: subAdd,
+                    reason: 'order',
+                    referenceId: `CANCEL-${order.orderNumber}`
+                  }
+                });
+              }
+            }
+          }
+        } catch (err) { }
+      }
+    }
+
+    // Points Reversal Logic for Customer Cancellation
+    if (order.customerId) {
+      let pointsToReturn = 0;
+      for (const item of order.items) {
+        if (item.isRedemption || order.paymentMethod === 'points') {
+          const product = await prisma.product.findUnique({ where: { id: item.productId } });
+          if (product && product.pointsCost) {
+            pointsToReturn += (product.pointsCost * item.quantity);
+          }
+        }
+      }
+
+      if (pointsToReturn > 0) {
+        await prisma.user.update({
+          where: { id: order.customerId },
+          data: { points: { increment: pointsToReturn } }
+        });
+
+        if (req.io && req.io.emitLoyaltyUpdate) {
+          req.io.emitLoyaltyUpdate(order.customerId, pointsToReturn, order.tenantId);
+        }
+      }
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'cancelled' },
+      include: { items: true }
+    });
+
+    const io = req.io;
+    if (io && io.emitOrderUpdate) {
+      io.emitOrderUpdate(updated, 'cancelled');
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to cancel order.' });
+  }
+});
+
+// POST /api/orders/:orderNumber/received — Confirm receipt by customer
+router.post('/:orderNumber/received', async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const order = await prisma.order.findUnique({
+      where: { orderNumber },
+      include: { tenant: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    if (order.status !== 'on_the_way') {
+      return res.status(400).json({ success: false, message: 'Wait for your order to be on the way before confirming.' });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'completed' },
+      include: { items: true }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: order.tenantId,
+        action: 'customer_confirmed_received',
+        entityType: 'order',
+        entityId: order.id.toString(),
+        details: `Order #${orderNumber} confirmed as received by customer.`
+      }
+    });
+
+    const io = req.io;
+    if (io && io.emitOrderUpdate) {
+      io.emitOrderUpdate(updated, 'completed');
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Confirm receipt error:', error);
+    res.status(500).json({ success: false, message: 'Failed to confirm receipt.' });
+  }
+});
+
+module.exports = router;

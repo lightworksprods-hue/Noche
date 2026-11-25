@@ -1,0 +1,457 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSocket } from '../context/SocketContext';
+import { playNotificationSound, updateAppBadge, requestNotificationPermission, showSystemNotification } from '../utils/helpers';
+import { getOrder, submitPackagePayment } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { Bell, AlertTriangle, X, Download } from 'lucide-react';
+
+export default function GlobalNotification() {
+  const [readyOrderNumbers, setReadyOrderNumbers] = useState([]);
+  const [cancelledOrderNumbers, setCancelledOrderNumbers] = useState([]);
+  const [packageBookingUpdate, setPackageBookingUpdate] = useState(null);
+  const [packagePaymentRequest, setPackagePaymentRequest] = useState(null);
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const alertIntervalRef = useRef(null);
+  const alertFlowTimerRef = useRef(null);
+  const alertActiveRef = useRef(false);
+  const { onEvent } = useSocket();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tenantSlug = searchParams.get('tenant') || 'project-million';
+  const { user } = useAuth();
+
+  // Helper to safely clear the chime loop
+  const clearChimeLoop = useCallback(() => {
+    if (alertFlowTimerRef.current) {
+      clearTimeout(alertFlowTimerRef.current);
+      alertFlowTimerRef.current = null;
+    }
+    if (alertIntervalRef.current) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+    alertActiveRef.current = false;
+  }, []);
+
+  // Listen for socket events
+  useEffect(() => {
+    if (!onEvent) return;
+    const unsub = onEvent('order_update', (data) => {
+      const orderStoragePrefix = tenantSlug || 'default';
+      const orderOwnerKey = data.order?.customerId ? `customer_${data.order.customerId}` : 'guest';
+      const activeOrdersKey = `${orderStoragePrefix}_${orderOwnerKey}_active_orders`;
+      const lastOrderKey = `${orderStoragePrefix}_${orderOwnerKey}_last_order_number`;
+
+      const activeOrders = JSON.parse(localStorage.getItem(activeOrdersKey) || '[]');
+      const lastOrderNumber = localStorage.getItem(lastOrderKey);
+
+      const isMyOrder = activeOrders.includes(data.order?.orderNumber) ||
+        data.order?.orderNumber === lastOrderNumber ||
+        (user && data.order?.customerId === user.id);
+
+      if (isMyOrder) {
+        requestNotificationPermission();
+
+        // Sync order to local active orders list if it matched by user id
+        if (data.order?.orderNumber && !activeOrders.includes(data.order.orderNumber)) {
+          const updated = [...activeOrders, data.order.orderNumber];
+          localStorage.setItem(activeOrdersKey, JSON.stringify(updated));
+        }
+
+        if (data.eventType === 'ready' || data.order.status === 'ready') {
+          triggerReadyAlert(data.order);
+        } else if (data.eventType === 'cancelled' || data.order.status === 'cancelled') {
+          triggerCancelledAlert(data.order.orderNumber, data.order.cancellationReason);
+          // Auto-remove from active orders list in realtime
+          const currentActive = JSON.parse(localStorage.getItem(activeOrdersKey) || '[]');
+          const updated = currentActive.filter(num => num !== data.order.orderNumber);
+          localStorage.setItem(activeOrdersKey, updated.length > 0 ? JSON.stringify(updated) : '[]');
+          if (updated.length === 0) localStorage.removeItem(activeOrdersKey);
+        } else if (data.eventType === 'completed' || data.order.status === 'completed') {
+          // Also cleanup completed orders in realtime
+          const currentActive = JSON.parse(localStorage.getItem(activeOrdersKey) || '[]');
+          const updated = currentActive.filter(num => num !== data.order.orderNumber);
+          localStorage.setItem(activeOrdersKey, updated.length > 0 ? JSON.stringify(updated) : '[]');
+          if (updated.length === 0) localStorage.removeItem(activeOrdersKey);
+        }
+      }
+    });
+    return unsub;
+  }, [onEvent, tenantSlug, user]);
+
+  // Notify a logged-in customer when an admin accepts or rejects a package booking.
+  useEffect(() => {
+    if (!onEvent || user?.role !== 'customer') return undefined;
+    const unsubscribe = onEvent('package_booking_update', (booking) => {
+      const packageName = booking.package?.name || 'your package booking';
+      const accepted = booking.status === 'accepted';
+      const message = accepted
+        ? `${packageName} for ${new Date(booking.eventDate).toLocaleDateString()} was accepted.`
+        : `${packageName} request was rejected.${booking.adminNotes ? ` Reason: ${booking.adminNotes}` : ' Please contact the store for details.'}`;
+      setPackageBookingUpdate({ accepted, message });
+      showSystemNotification(accepted ? 'Booking Accepted' : 'Booking Update', message);
+    });
+    return unsubscribe;
+  }, [onEvent, user]);
+
+  useEffect(() => {
+    if (!onEvent || user?.role !== 'customer') return undefined;
+    const unsubscribeRequest = onEvent('package_payment_requested', (booking) => {
+      setPackagePaymentRequest(booking);
+      setPaymentReference('');
+      setPaymentMessage('');
+      showSystemNotification('Payment Required', `Payment instructions are ready for ${booking.package?.name || 'your booking'}.`);
+    });
+    const unsubscribeStatus = onEvent('package_payment_status_updated', (booking) => {
+      setPackagePaymentRequest(null);
+      setPackageBookingUpdate({
+        accepted: ['verified', 'paid'].includes(booking.paymentStatus),
+        message: booking.paymentStatus === 'paid'
+          ? 'Your package booking is fully paid.'
+          : booking.paymentStatus === 'verified'
+            ? 'Your payment was verified. The admin can now confirm your booking.'
+            : 'The payment reference could not be verified. Please check it and wait for new instructions.'
+      });
+    });
+    return () => {
+      unsubscribeRequest();
+      unsubscribeStatus();
+    };
+  }, [onEvent, user]);
+
+  const copyPaymentAmount = async () => {
+    if (!packagePaymentRequest?.paymentAmount) return;
+    const amount = Number(packagePaymentRequest.paymentAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    try {
+      await navigator.clipboard.writeText(`PHP ${amount}`);
+      setPaymentMessage('Payment amount copied.');
+    } catch {
+      setPaymentMessage('Copy failed. Please copy the amount manually.');
+    }
+  };
+
+  const submitPaymentReference = async (event) => {
+    event.preventDefault();
+    setPaymentSubmitting(true);
+    setPaymentMessage('');
+    try {
+      await submitPackagePayment(packagePaymentRequest.id, paymentReference);
+      setPaymentMessage('Reference sent. The admin will verify your payment.');
+      setPackagePaymentRequest(null);
+    } catch (error) {
+      setPaymentMessage(error.response?.data?.message || 'Could not submit the payment reference.');
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  };
+
+  const paymentMethodLabel = packagePaymentRequest?.paymentMethod === 'maya' ? 'Maya' : 'GCash';
+  const formattedPaymentAmount = Number(packagePaymentRequest?.paymentAmount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const savePaymentQr = async () => {
+    if (!packagePaymentRequest?.paymentQr) return;
+    await copyPaymentAmount();
+    try {
+      const response = await fetch(packagePaymentRequest.paymentQr);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${paymentMethodLabel.toLowerCase()}-qr-${packagePaymentRequest.id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+      setPaymentMessage(`QR saved and PHP ${formattedPaymentAmount} copied.`);
+    } catch {
+      window.open(packagePaymentRequest.paymentQr, '_blank', 'noopener,noreferrer');
+      setPaymentMessage(`QR opened and PHP ${formattedPaymentAmount} copied.`);
+    }
+  };
+
+  // Polling fallback
+  useEffect(() => {
+    const checkOrders = async () => {
+      const orderStoragePrefix = tenantSlug || 'default';
+      const orderOwnerKey = user?.id ? `customer_${user.id}` : 'guest';
+      const activeOrdersKey = `${orderStoragePrefix}_${orderOwnerKey}_active_orders`;
+      const lastOrderKey = `${orderStoragePrefix}_${orderOwnerKey}_last_order_number`;
+
+      const activeOrders = JSON.parse(localStorage.getItem(activeOrdersKey) || '[]');
+      const lastOrderNumber = localStorage.getItem(lastOrderKey);
+      const ordersToCheck = Array.from(new Set([...activeOrders, lastOrderNumber].filter(Boolean)));
+      if (ordersToCheck.length === 0) return;
+
+      requestNotificationPermission();
+
+      for (const orderNum of ordersToCheck) {
+        try {
+          const res = await getOrder(orderNum);
+          const status = res.data.data.status;
+          if (status === 'ready') {
+            triggerReadyAlert(res.data.data);
+          } else if (status === 'cancelled' || status === 'completed') {
+            if (status === 'cancelled') {
+              triggerCancelledAlert(orderNum, res.data.data.cancellationReason);
+            }
+            // Cleanup inactive orders found during polling
+            const activeOrdersNow = JSON.parse(localStorage.getItem(activeOrdersKey) || '[]');
+            const updated = activeOrdersNow.filter(num => num !== orderNum);
+            localStorage.setItem(activeOrdersKey, updated.length > 0 ? JSON.stringify(updated) : '[]');
+            if (updated.length === 0) localStorage.removeItem(activeOrdersKey);
+          }
+        } catch (e) {
+          if (e.response && e.response.status === 404) {
+            // Order was deleted or not found, remove it from active tracking
+            const activeOrdersNow = JSON.parse(localStorage.getItem(activeOrdersKey) || '[]');
+            const updated = activeOrdersNow.filter(num => num !== orderNum);
+            localStorage.setItem(activeOrdersKey, updated.length > 0 ? JSON.stringify(updated) : '[]');
+            if (updated.length === 0) localStorage.removeItem(activeOrdersKey);
+            if (localStorage.getItem(lastOrderKey) === orderNum) localStorage.removeItem(lastOrderKey);
+          }
+        }
+      }
+    };
+
+    checkOrders();
+    const int = setInterval(checkOrders, 30000);
+    return () => clearInterval(int);
+  }, [tenantSlug]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => clearChimeLoop();
+  }, [clearChimeLoop]);
+
+  // Update native PWA app badge with customer's ready orders count
+  useEffect(() => {
+    updateAppBadge(readyOrderNumbers.length);
+    return () => {
+      updateAppBadge(0);
+    };
+  }, [readyOrderNumbers]);
+
+  const triggerReadyAlert = (order) => {
+    const orderNum = order.orderNumber;
+    const dismissed = sessionStorage.getItem(`ready_dismissed_${orderNum}`);
+    if (dismissed) return;
+
+    const displayNum = orderNum?.includes('-') ? orderNum.split('-')[1] : orderNum;
+    const isDelivery = order.orderType === 'delivery';
+    const msg = isDelivery ? `Order #${displayNum} is being packed for delivery!` : `Your Order #${displayNum} is ready to be picked up at the counter.`;
+    showSystemNotification('Order is Ready! 🍽️', msg);
+
+    setReadyOrderNumbers(prev => {
+      if (prev.find(o => o.number === orderNum)) return prev;
+      const next = [...prev, { number: orderNum, type: order.orderType }];
+
+      // Only start the alert flow if one isn't already active
+      if (!alertActiveRef.current) {
+        startAlertFlow(next);
+      }
+      return next;
+    });
+  };
+
+  const triggerCancelledAlert = (orderNum, reason) => {
+    const dismissed = sessionStorage.getItem(`cancel_dismissed_${orderNum}`);
+    if (dismissed) return;
+
+    const displayNum = orderNum?.includes('-') ? orderNum.split('-')[1] : orderNum;
+    showSystemNotification('Order Cancelled ⚠️', `Order #${displayNum} has been cancelled: ${reason || 'Please contact counter.'}`);
+
+    setCancelledOrderNumbers(prev => {
+      if (prev.find(o => o.number === orderNum)) return prev;
+      const next = [...prev, { number: orderNum, reason: reason || 'Cancelled by staff' }];
+
+      // Stop any ready chimes and play a single warning chime
+      clearChimeLoop();
+      playNotificationSound('default');
+
+      return next;
+    });
+  };
+
+  const startAlertFlow = (orderNums) => {
+    // Prevent re-entry if already running
+    if (alertActiveRef.current) return;
+    alertActiveRef.current = true;
+
+    // Clear any previous timers/intervals
+    clearChimeLoop();
+    // Re-set active since clearChimeLoop resets it
+    alertActiveRef.current = true;
+
+    // 1. Play initial chime
+    playNotificationSound('ready');
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+
+    // 2. Speech (Re-enabled - Only one source to prevent double voice)
+    setTimeout(() => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const text = orderNums.length > 1
+          ? `Your orders are ready. Please check your status screen.`
+          : orderNums[0].type === 'delivery'
+            ? `Your order ${orderNums[0].number.includes('-') ? orderNums[0].number.split('-')[1] : orderNums[0].number} is being prepared for delivery.`
+            : `Your order ${orderNums[0].number.includes('-') ? orderNums[0].number.split('-')[1] : orderNums[0].number} is ready. Please proceed to the counter.`;
+
+        console.log(`📢 Speaking: "${text}"`);
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.rate = 0.9; msg.pitch = 1.1; msg.volume = 1;
+
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v => v.lang.startsWith('en') && v.name.includes('Female'))
+          || voices.find(v => v.lang.startsWith('en')) || voices[0];
+        if (preferred) msg.voice = preferred;
+
+        msg.onerror = (e) => console.error('Speech error:', e);
+        msg.onend = () => console.log('🏁 Speech finished.');
+        window.speechSynthesis.speak(msg);
+      } else {
+        console.warn('⚠️ Speech synthesis not supported in this browser.');
+      }
+    }, 600);
+
+    // 3. Start chime loop after speech has had time to play
+    alertFlowTimerRef.current = setTimeout(() => {
+      alertFlowTimerRef.current = null;
+      playNotificationSound('ready');
+      // Start the repeating chime interval
+      alertIntervalRef.current = setInterval(() => {
+        playNotificationSound('ready');
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+      }, 3000);
+    }, 4000);
+  };
+
+  const dismissReadyAlert = () => {
+    readyOrderNumbers.forEach(o => sessionStorage.setItem(`ready_dismissed_${o.number}`, 'true'));
+    const lastOrder = readyOrderNumbers[readyOrderNumbers.length - 1];
+    setReadyOrderNumbers([]);
+
+    clearChimeLoop();
+    if (navigator.vibrate) navigator.vibrate(0);
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+    if (lastOrder) {
+      const targetPath = `/order/${lastOrder.number}`;
+      navigate(targetPath);
+    }
+  };
+
+  const dismissCancelAlert = () => {
+    cancelledOrderNumbers.forEach(o => sessionStorage.setItem(`cancel_dismissed_${o.number}`, 'true'));
+    setCancelledOrderNumbers([]);
+  };
+
+  if (readyOrderNumbers.length === 0 && cancelledOrderNumbers.length === 0 && !packageBookingUpdate && !packagePaymentRequest) return null;
+
+  return (
+    <>
+      {packagePaymentRequest && (
+        <div className="fixed inset-0 z-[115] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:items-center sm:p-6">
+          <form onSubmit={submitPaymentReference} className="my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-[2rem] bg-white p-5 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:p-7">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl border border-surface-200 bg-white p-1.5 shadow-sm"><img src={paymentMethodLabel === 'Maya' ? '/logos/maya-logo.jpg' : '/logos/GCash-Logo.png'} alt={paymentMethodLabel} className="h-full w-full rounded-xl object-contain" /></div>
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-surface-400">{paymentMethodLabel} booking payment</p><h2 className="mt-1 text-2xl font-black text-surface-900">{packagePaymentRequest.package?.name || 'Package booking'}</h2></div>
+              </div>
+              <button type="button" onClick={() => setPackagePaymentRequest(null)} aria-label="Close payment request" className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-500 transition hover:bg-surface-200 hover:text-surface-900"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-surface-600">{packagePaymentRequest.paymentInstructions}</p>
+            <div className="mt-5 rounded-2xl bg-surface-50 p-4 text-center">
+              {packagePaymentRequest.paymentQr && <img src={packagePaymentRequest.paymentQr} alt={`${paymentMethodLabel} payment QR code`} className="mx-auto h-48 w-48 rounded-xl object-contain sm:h-56 sm:w-56" />}
+              <p className="mt-3 text-xs font-bold uppercase tracking-widest text-surface-400">Amount to pay</p>
+              <p className="text-3xl font-black text-surface-900">₱{formattedPaymentAmount}</p>
+              {packagePaymentRequest.paymentQr && <button type="button" onClick={savePaymentQr} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:-translate-y-0.5 hover:bg-primary-700 hover:shadow-xl active:translate-y-0"><Download className="h-4 w-4" />Save QR</button>}
+            </div>
+            <label className="mt-5 block text-sm font-bold text-surface-700">Last 4 digits of {paymentMethodLabel} reference ID
+              <input required inputMode="numeric" pattern="[0-9]{4}" maxLength="4" value={paymentReference} onChange={event => setPaymentReference(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="1234" className="input-field mt-1 w-full text-center text-lg tracking-[0.4em]" />
+            </label>
+            {paymentMessage && <p className="mt-3 rounded-xl bg-surface-50 p-3 text-sm font-bold text-surface-600">{paymentMessage}</p>}
+            <button type="submit" disabled={paymentSubmitting} className="mt-5 w-full rounded-xl bg-primary-600 py-3 font-black text-white transition-opacity disabled:opacity-50">{paymentSubmitting ? 'Sending...' : 'Submit Payment Reference'}</button>
+          </form>
+        </div>
+      )}
+
+      {packageBookingUpdate && (
+        <div className={`fixed right-4 top-4 z-[120] w-[min(92vw,420px)] rounded-2xl border p-4 shadow-2xl ${packageBookingUpdate.accepted ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'}`}>
+          <div className="flex items-start gap-3">
+            <Bell className={`mt-0.5 h-5 w-5 flex-shrink-0 ${packageBookingUpdate.accepted ? 'text-emerald-600' : 'text-red-600'}`} />
+            <div className="flex-1">
+              <p className="font-black">{packageBookingUpdate.accepted ? 'Booking Accepted' : 'Booking Update'}</p>
+              <p className="mt-1 text-sm font-medium">{packageBookingUpdate.message}</p>
+            </div>
+            <button type="button" onClick={() => setPackageBookingUpdate(null)} className="text-lg font-bold opacity-60 hover:opacity-100" aria-label="Dismiss booking notification">×</button>
+          </div>
+        </div>
+      )}
+
+      {/* READY ALERT */}
+      {readyOrderNumbers.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-emerald-900/90 backdrop-blur-md p-6" onClick={dismissReadyAlert}>
+          <div className="text-center animate-fade-in-up w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex justify-center animate-bounce">
+              <Bell className="w-20 h-20 sm:w-24 sm:h-24 text-emerald-300" />
+            </div>
+            <h1 className="font-heading text-4xl sm:text-6xl font-black text-white mb-2 leading-tight">
+              {readyOrderNumbers.length > 1 ? 'Your Orders are Ready!' : 'Your Order is Ready!'}
+            </h1>
+            <p className="text-emerald-200 text-lg sm:text-xl font-medium mb-4">Queue Number{readyOrderNumbers.length > 1 ? 's' : ''}</p>
+
+            <div className="flex flex-wrap justify-center gap-4 mb-10">
+              {readyOrderNumbers.map(o => (
+                <div key={o.number} className="bg-white/10 backdrop-blur-md border-2 border-white/20 px-6 py-4 rounded-3xl">
+                  <p className="font-heading text-4xl sm:text-6xl font-black text-white tracking-tight">
+                    {o.number?.includes('-') ? o.number.split('-')[1] : o.number}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-emerald-300 text-base sm:text-lg mb-10">
+              {readyOrderNumbers.length === 1 && readyOrderNumbers[0].type === 'delivery'
+                ? "Our team is packing your order for delivery right now!"
+                : `Please proceed to the counter to pick up your order${readyOrderNumbers.length > 1 ? 's' : ''}.`}
+            </p>
+            <button onClick={dismissReadyAlert} className="bg-white text-emerald-800 font-bold text-lg sm:text-xl px-12 py-5 rounded-2xl shadow-2xl hover:bg-emerald-50 transition-all active:scale-95">
+              Okay
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CANCEL ALERT */}
+      {cancelledOrderNumbers.length > 0 && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-red-950/90 backdrop-blur-md p-6" onClick={dismissCancelAlert}>
+          <div className="text-center animate-fade-in-up w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 animate-shake"><AlertTriangle className="w-20 h-20 sm:w-24 sm:h-24 text-red-300" /></div>
+            <h1 className="font-heading text-4xl sm:text-6xl font-black text-white mb-2 leading-tight">
+              Order Cancelled
+            </h1>
+
+            <div className="space-y-4 mb-10">
+              {cancelledOrderNumbers.map(o => (
+                <div key={o.number} className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl">
+                  <p className="text-white font-heading text-3xl font-black">
+                    Order #{o.number?.includes('-') ? o.number.split('-')[1] : o.number}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-red-300 text-base sm:text-lg mb-10">Please proceed to the counter if you have questions or for refund assistance.</p>
+
+            <button onClick={dismissCancelAlert} className="bg-white text-red-800 font-bold text-lg sm:text-xl px-12 py-5 rounded-2xl shadow-2xl hover:bg-red-50 transition-all active:scale-95">
+              I Understand
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

@@ -1,0 +1,144 @@
+const express = require('express');
+const router = express.Router();
+const { authenticate, authorize } = require('../middleware/auth');
+const prisma = require('../lib/prisma');
+const { sendPushToOrder } = require('./push');
+
+// GET /api/kitchen/orders
+router.get('/orders', authenticate, authorize('kitchen', 'admin', 'cashier'), async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { 
+        status: { in: ['confirmed', 'preparing', 'ready'] },
+        tenantId: req.tenantId
+      },
+      include: { items: true },
+      orderBy: { confirmedAt: 'asc' }
+    });
+    res.json({ success: true, data: orders });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to load kitchen orders.' });
+  }
+});
+
+// POST /api/kitchen/orders/:id/start
+router.post('/orders/:id/start', authenticate, authorize('kitchen', 'admin', 'cashier'), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const { prepTime } = req.body; // Minutes from kitchen
+    const order = await prisma.order.findUnique({ 
+      where: { id: orderId, tenantId: req.tenantId } 
+    });
+    if (!order || !['confirmed', 'pending'].includes(order.status)) {
+      return res.status(400).json({ success: false, message: 'Order not found or cannot be prepared.' });
+    }
+    const updated = await prisma.order.update({
+      where: { id: orderId, tenantId: req.tenantId },
+      data: { 
+        status: 'preparing', 
+        confirmedAt: order.confirmedAt || new Date(),
+        kitchenStartedAt: new Date(),
+        estimatedPrepTime: prepTime ? parseInt(prepTime) : null
+      },
+      include: { items: true }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        action: 'kitchen_start',
+        entityType: 'order',
+        entityId: orderId.toString(),
+        details: `Kitchen started preparing Order #${updated.orderNumber}`
+      }
+    });
+
+    const io = req.io;
+    if (io && io.emitOrderUpdate) io.emitOrderUpdate(updated, 'preparing');
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to update order.' });
+  }
+});
+
+// POST /api/kitchen/orders/:id/complete
+router.post('/orders/:id/complete', authenticate, authorize('kitchen', 'admin', 'cashier'), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await prisma.order.findUnique({ 
+      where: { id: orderId, tenantId: req.tenantId } 
+    });
+    if (!order || !['confirmed', 'preparing'].includes(order.status)) {
+      return res.status(400).json({ success: false, message: 'Invalid order state.' });
+    }
+    const updated = await prisma.order.update({
+      where: { id: orderId, tenantId: req.tenantId },
+      data: { status: 'ready', kitchenCompletedAt: new Date(), kitchenStartedAt: order.kitchenStartedAt || new Date() },
+      include: { items: true }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        action: 'kitchen_complete',
+        entityType: 'order',
+        entityId: orderId.toString(),
+        details: `Kitchen finished Order #${updated.orderNumber}. Ready for pickup.`
+      }
+    });
+
+    const io = req.io;
+    if (io && io.emitOrderUpdate) io.emitOrderUpdate(updated, 'ready');
+    if (io && io.emitQueueUpdate) io.emitQueueUpdate({ order: updated, type: 'ready' });
+
+    // Send native push notification
+    await sendPushToOrder(orderId, {
+      title: 'Order Ready!',
+      body: `Your order #${updated.orderNumber} is ready for pickup! Enjoy!`,
+      url: `/track/${updated.orderNumber}`
+    });
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to complete order.' });
+  }
+});
+
+// POST /api/kitchen/orders/:id/served
+router.post('/orders/:id/served', authenticate, authorize('kitchen', 'admin', 'cashier'), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await prisma.order.findUnique({ where: { id: orderId, tenantId: req.tenantId } });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    if (order.orderType === 'delivery' && order.status !== 'on_the_way') {
+      return res.status(400).json({ success: false, message: 'Delivery orders must be dispatched before marking them delivered.' });
+    }
+    const nextStatus = order.paymentStatus === 'paid' ? 'completed' : 'served';
+    const updated = await prisma.order.update({
+      where: { id: orderId, tenantId: req.tenantId },
+      data: { status: nextStatus },
+      include: { items: true }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        action: 'order_served',
+        entityType: 'order',
+        entityId: orderId.toString(),
+      details: `Order #${updated.orderNumber} ${nextStatus === 'completed' ? 'served and completed' : 'served with payment still due'}.`
+      }
+    });
+
+    const io = req.io;
+    if (io && io.emitOrderUpdate) io.emitOrderUpdate(updated, 'completed');
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to mark as served.' });
+  }
+});
+
+module.exports = router;
