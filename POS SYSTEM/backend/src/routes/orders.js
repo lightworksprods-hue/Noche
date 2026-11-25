@@ -38,7 +38,7 @@ router.get('/history', authenticate, async (req, res) => {
 // POST /api/orders — Kiosk: Place new order
 router.post('/', async (req, res) => {
   try {
-    const { customerId, customerName, customerEmail, customerPhone, orderType, paymentMethod, paymentMode, items, notes, deliveryAddress, deliveryLat, deliveryLng, deliveryFee, paymentReference, paymentAmount, promoCode, clientOrderId } = req.body;
+    const { customerId, customerName, customerEmail, customerPhone, orderType, paymentMethod, paymentMode, items, notes, deliveryAddress, deliveryLat, deliveryLng, deliveryFee, scheduledFor, paymentReference, paymentAmount, promoCode, clientOrderId } = req.body;
 
     const isCounterOrder = req.body.source === 'counter';
     if (!isCounterOrder && !['pickup', 'delivery'].includes(orderType)) {
@@ -77,6 +77,14 @@ router.post('/', async (req, res) => {
     // Customer-created delivery orders must be prepaid. Counter POS orders may use COD.
     if (!isCounterOrder && orderType === 'delivery' && !deliveryAddress) {
       return res.status(400).json({ success: false, message: 'A delivery address is required.' });
+    }
+
+    let requestedSchedule = null;
+    if (!isCounterOrder) {
+      requestedSchedule = new Date(scheduledFor || '');
+      if (!scheduledFor || Number.isNaN(requestedSchedule.getTime()) || requestedSchedule.getTime() < Date.now()) {
+        return res.status(400).json({ success: false, message: 'Choose a valid future date and time for your order.' });
+      }
     }
 
     if (!items || items.length === 0) {
@@ -433,6 +441,7 @@ router.post('/', async (req, res) => {
         deliveryLat: deliveryLat ? parseFloat(deliveryLat) : null,
         deliveryLng: deliveryLng ? parseFloat(deliveryLng) : null,
         deliveryFee: deliveryFee ? parseFloat(deliveryFee) : 0,
+        scheduledFor: requestedSchedule,
         paymentReference: paymentReference || null,
         notes: (notes ? notes : '') + (appliedPromoId ? ` (Promo: ${promoCode})` : '') + (submittedPayment ? ` (${paymentMode === 'full_payment' ? 'Full payment' : '50% downpayment'} submitted: ${paymentDue.toFixed(2)})` : ''),
         items: { create: orderItems }

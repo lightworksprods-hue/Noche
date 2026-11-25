@@ -6,9 +6,10 @@ import { unlockAudio } from '../utils/helpers';
 import { applyTheme } from '../utils/theme';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const rememberedEmailKey = 'pos_remembered_email';
+  const [email, setEmail] = useState(() => localStorage.getItem(rememberedEmailKey) || '');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem(rememberedEmailKey)));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
@@ -84,7 +85,11 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const res = await login({ email, password, tenantSlug, turnstileToken: captchaToken || undefined });
+      const normalizedEmail = email.trim();
+      if (rememberMe) localStorage.setItem(rememberedEmailKey, normalizedEmail);
+      else localStorage.removeItem(rememberedEmailKey);
+
+      const res = await login({ email: normalizedEmail, password, tenantSlug, turnstileToken: captchaToken || undefined });
       const { token, user } = res.data.data;
       unlockAudio(); // Automatically enable sound system
       loginUser(token, user, rememberMe);
@@ -133,7 +138,7 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-medium text-white/60 mb-1.5">Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required
               className="w-full px-4 py-3 bg-black/20 border border-white/15 rounded-xl text-white placeholder-white/30 focus:ring-2 focus:ring-white/30 focus:border-white/40 transition-all" placeholder="email@example.com" />
           </div>
 

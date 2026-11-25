@@ -10,17 +10,18 @@ import InventoryTab from '../components/admin/InventoryTab';
 import SettingsTab from '../components/admin/SettingsTab';
 import StaffTab from '../components/admin/StaffTab';
 import AdminNotifications from '../components/admin/AdminNotifications';
+import UtangTracker from '../components/admin/UtangTracker';
 import { formatCurrency } from '../utils/helpers';
 import { applyTheme, clearTheme } from '../utils/theme';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
-import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles } from 'lucide-react';
+import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles, WalletCards } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 
 export default function AdminDashboard() {
   const { user, logoutUser, performLogout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const allowedTabs = ['overview', 'orders', 'products', 'categories', 'inventory', 'staff', 'settings'];
+  const allowedTabs = ['overview', 'orders', 'utang', 'products', 'categories', 'inventory', 'staff', 'settings'];
   const requestedTab = searchParams.get('tab') || 'overview';
   const activeTab = allowedTabs.includes(requestedTab) ? requestedTab : 'overview';
 
@@ -38,6 +39,7 @@ export default function AdminDashboard() {
   const featureLabels = {
     overview: 'Overview',
     orders: 'Orders',
+    utang: 'Utang Tracker',
     products: 'Products',
     categories: 'Categories',
     inventory: 'Stock / Inventory',
@@ -107,6 +109,7 @@ export default function AdminDashboard() {
       items: [
         { id: 'overview', label: 'Overview', icon: <BarChart2 className="w-5 h-5" /> },
         { id: 'orders', label: 'Orders', icon: <ShoppingBag className="w-5 h-5" /> },
+        { id: 'utang', label: 'Utang Tracker', icon: <WalletCards className="w-5 h-5" /> },
       ]
     },
     {
@@ -394,6 +397,7 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'orders' && <OrdersTab />}
+          {activeTab === 'utang' && <UtangTracker />}
           {activeTab === 'categories' && <CategoriesTab />}
           {activeTab === 'products' && <ProductsTab />}
           {activeTab === 'staff' && <StaffTab />}

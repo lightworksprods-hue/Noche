@@ -718,6 +718,11 @@ export default function OrderConfirmation() {
               <div className="flex justify-between py-1"><span className="text-surface-500">Payment Plan</span><span className="font-medium">50% Downpayment</span></div>
             )}
             <div className="flex justify-between py-1"><span className="text-surface-500">Placed</span><span className="font-medium">{formatDate(order.createdAt)}</span></div>
+            {order.scheduledFor && <div className="flex justify-between py-1"><span className="text-surface-500">Requested for</span><span className="font-medium text-right text-primary-700">{formatDate(order.scheduledFor)}</span></div>}
+            {order.scheduledFor && order.scheduleStatus && (
+              <div className="flex justify-between py-1"><span className="text-surface-500">Schedule</span><span className={`font-bold ${order.scheduleStatus === 'confirmed' ? 'text-emerald-600' : order.scheduleStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>{order.scheduleStatus === 'confirmed' ? 'Confirmed by store' : order.scheduleStatus === 'rejected' ? 'Not available' : 'Awaiting store confirmation'}</span></div>
+            )}
+            {order.scheduleStatus === 'rejected' && order.scheduleNote && <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{order.scheduleNote}</div>}
           </div>
           <div className="border-t border-surface-100 mt-3 pt-3">
             {order.items?.map(item => (

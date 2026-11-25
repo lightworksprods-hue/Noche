@@ -50,6 +50,7 @@ model Tenant {
   cashierShifts CashierShift[]
   payrollPayments PayrollPayment[]
   addons        Addon[]
+  debtPlans     DebtPlan[]
 }
 
 model User {
@@ -80,6 +81,7 @@ model User {
   payrollPayments PayrollPayment[] @relation("PayrollStaff")
   recordedPayrollPayments PayrollPayment[] @relation("PayrollRecordedBy")
   packageBookings EventBooking[] @relation("CustomerPackageBookings")
+  debtPayments DebtPayment[]
 
   @@unique([email, tenantId])
 }
@@ -212,6 +214,10 @@ model Order {
   deliveryLat        Float?
   deliveryLng        Float?
   deliveryFee        Float     @default(0)
+  scheduledFor       DateTime? // Customer's requested pickup or delivery date/time
+  scheduleStatus     String    @default("pending") // pending, confirmed, rejected
+  scheduleNote       String?
+  scheduleConfirmedAt DateTime?
   riderId            Int?
   rider              User?     @relation("RiderOrders", fields: [riderId], references: [id])
   lastRiderLat       Float?
@@ -237,6 +243,7 @@ model Order {
   payments      Payment[]
   notifications Notification[]
   pushSubscriptions PushSubscription[]
+  debtPlan         DebtPlan?
 }
 
 model OrderItem {
@@ -274,6 +281,40 @@ model Payment {
 
   order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   cashier User? @relation(fields: [cashierId], references: [id])
+}
+
+model DebtPlan {
+  id            Int      @id @default(autoincrement())
+  tenantId      Int
+  orderId       Int      @unique
+  frequency     String   // every_15th or monthly
+  initialBalance Float
+  balance       Float
+  nextDueDate   DateTime
+  status        String   @default("active") // active, paid, cancelled
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  payments      DebtPayment[]
+
+  @@index([tenantId, status, nextDueDate])
+}
+
+model DebtPayment {
+  id          Int      @id @default(autoincrement())
+  debtPlanId  Int
+  amount      Float
+  paymentMethod String @default("cash")
+  note        String?
+  paidAt      DateTime @default(now())
+  recordedBy  Int?
+
+  debtPlan    DebtPlan @relation(fields: [debtPlanId], references: [id], onDelete: Cascade)
+  recorder    User?    @relation(fields: [recordedBy], references: [id])
+  @@index([debtPlanId, paidAt])
 }
 
 model Supplier {

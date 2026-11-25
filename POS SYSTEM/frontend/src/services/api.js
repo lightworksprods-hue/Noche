@@ -118,8 +118,12 @@ export const getAdminOrders = (status, page, search = '') => {
   return api.get(url);
 };
 export const updateAdminOrderStatus = (id, status) => api.patch(`/admin/orders/${id}/status`, { status });
+export const updateAdminOrderSchedule = (id, scheduleStatus, scheduleNote) => api.patch(`/admin/orders/${id}/schedule`, { scheduleStatus, scheduleNote });
 export const updateAdminOrderPayment = (id, paymentStatus, paymentMethod, paymentReference) => api.patch(`/admin/orders/${id}/payment`, { paymentStatus, paymentMethod, paymentReference });
 export const updateAdminOrderRefund = (id, refundStatus) => api.patch(`/admin/orders/${id}/refund`, { refundStatus });
+export const getAdminUtang = () => api.get('/admin/utang');
+export const createAdminUtang = (orderId, data) => api.post(`/admin/orders/${orderId}/utang`, data);
+export const recordAdminUtangPayment = (planId, data) => api.post(`/admin/utang/${planId}/payment`, data);
 export const getAdminProducts = () => api.get('/admin/products');
 export const createProduct = (data) => api.post('/admin/products', data);
 export const updateProduct = (id, data) => api.put(`/admin/products/${id}`, data);

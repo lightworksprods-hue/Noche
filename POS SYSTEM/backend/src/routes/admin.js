@@ -252,7 +252,7 @@ router.get('/orders', authenticate, authorize('admin'), async (req, res) => {
 
     const orders = await prisma.order.findMany({
       where,
-      include: { items: true, payments: true },
+      include: { items: true, payments: true, debtPlan: { select: { id: true, status: true, balance: true } } },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: parseInt(limit)
@@ -261,6 +261,126 @@ router.get('/orders', authenticate, authorize('admin'), async (req, res) => {
     res.json({ success: true, data: orders, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to load orders.' });
+  }
+});
+
+// GET /api/admin/utang — Active staggered-payment accounts.
+router.get('/utang', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const plans = await prisma.debtPlan.findMany({
+      where: { tenantId: req.tenantId },
+      include: {
+        order: { select: { id: true, orderNumber: true, customerName: true, customerPhone: true, total: true, status: true, scheduledFor: true } },
+        payments: { orderBy: { paidAt: 'desc' } }
+      },
+      orderBy: [{ status: 'asc' }, { nextDueDate: 'asc' }]
+    });
+    res.json({ success: true, data: plans });
+  } catch (error) {
+    console.error('Utang tracker load error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load utang accounts.' });
+  }
+});
+
+// POST /api/admin/orders/:id/utang — Start or update a staggered-payment plan.
+router.post('/orders/:id/utang', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const { frequency, nextDueDate, notes } = req.body;
+    if (!['every_15th', 'monthly'].includes(frequency)) return res.status(400).json({ success: false, message: 'Choose every 15th or monthly.' });
+    const dueDate = new Date(nextDueDate || '');
+    if (Number.isNaN(dueDate.getTime())) return res.status(400).json({ success: false, message: 'Choose a valid next due date.' });
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: req.tenantId } });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    const initialPaid = order.paymentStatus === 'partially_paid' ? Number(order.total) * 0.5 : order.paymentStatus === 'paid' ? Number(order.total) : 0;
+    const balance = Math.max(Number(order.total) - initialPaid, 0);
+    if (balance <= 0) return res.status(400).json({ success: false, message: 'This order has no remaining balance.' });
+
+    const plan = await prisma.debtPlan.upsert({
+      where: { orderId },
+      create: { tenantId: req.tenantId, orderId, frequency, initialBalance: balance, balance, nextDueDate: dueDate, notes: String(notes || '').trim() || null },
+      update: { frequency, nextDueDate: dueDate, status: 'active', notes: String(notes || '').trim() || null }
+    });
+    res.json({ success: true, data: plan });
+  } catch (error) {
+    console.error('Utang plan setup error:', error);
+    res.status(500).json({ success: false, message: 'Failed to set up the utang plan.' });
+  }
+});
+
+// POST /api/admin/utang/:id/payment — Record one installment.
+router.post('/utang/:id/payment', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+    const amount = Number(req.body.amount);
+    const paymentMethod = ['cash', 'qrph', 'gcash', 'maya'].includes(req.body.paymentMethod) ? req.body.paymentMethod : 'cash';
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ success: false, message: 'Enter a valid payment amount.' });
+
+    const plan = await prisma.debtPlan.findFirst({ where: { id: planId, tenantId: req.tenantId }, include: { order: true } });
+    if (!plan) return res.status(404).json({ success: false, message: 'Utang account not found.' });
+    if (plan.status === 'paid' || amount > plan.balance + 0.01) return res.status(400).json({ success: false, message: 'Payment is greater than the remaining balance.' });
+
+    const remaining = Math.max(plan.balance - amount, 0);
+    const paidAt = new Date(req.body.paidAt || Date.now());
+    const nextDueDate = new Date(plan.nextDueDate);
+    if (plan.frequency === 'every_15th') {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1, 15);
+    } else {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    }
+
+    const result = await prisma.$transaction(async tx => {
+      const payment = await tx.debtPayment.create({ data: { debtPlanId: plan.id, amount, paymentMethod, note: String(req.body.note || '').trim() || null, paidAt, recordedBy: req.user.id } });
+      const updatedPlan = await tx.debtPlan.update({ where: { id: plan.id }, data: { balance: remaining, status: remaining <= 0.01 ? 'paid' : 'active', nextDueDate: nextDueDate > paidAt ? nextDueDate : new Date(paidAt.getTime() + 86400000) }, include: { order: true, payments: { orderBy: { paidAt: 'desc' } } } });
+      await tx.order.update({ where: { id: plan.orderId }, data: { updatedAt: new Date() } });
+      return { payment, updatedPlan };
+    });
+    const updatedOrder = await prisma.order.findUnique({ where: { id: plan.orderId }, include: { items: true, payments: true } });
+    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updatedOrder, 'utang_payment_updated');
+    res.json({ success: true, data: result.updatedPlan });
+  } catch (error) {
+    console.error('Utang payment error:', error);
+    res.status(500).json({ success: false, message: 'Failed to record utang payment.' });
+  }
+});
+
+// PATCH /api/admin/orders/:id/schedule — Admin confirms whether the requested date/time can be catered.
+router.patch('/orders/:id/schedule', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const { scheduleStatus, scheduleNote } = req.body;
+    if (!['confirmed', 'rejected'].includes(scheduleStatus)) {
+      return res.status(400).json({ success: false, message: 'Choose whether the schedule is confirmed or rejected.' });
+    }
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: req.tenantId } });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    if (!order.scheduledFor) return res.status(400).json({ success: false, message: 'This order has no requested schedule.' });
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        scheduleStatus,
+        scheduleNote: String(scheduleNote || '').trim() || null,
+        scheduleConfirmedAt: new Date()
+      },
+      include: { items: true, payments: true }
+    });
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        action: 'admin_update_order_schedule',
+        entityType: 'order',
+        entityId: order.orderNumber,
+        details: `Admin ${scheduleStatus} the requested schedule for Order #${order.orderNumber}.${scheduleNote ? ` Note: ${scheduleNote}` : ''}`
+      }
+    });
+    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, 'schedule_updated');
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Admin order schedule error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update order schedule.' });
   }
 });
 

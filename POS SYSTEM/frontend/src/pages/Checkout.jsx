@@ -145,6 +145,11 @@ export default function Checkout() {
   const [customerEmail, setCustomerEmail] = useState(() => savedContact?.email || user?.email || '');
   const [paymentMode, setPaymentMode] = useState('downpayment');
   const [orderType, setOrderType] = useState('pickup');
+  const [scheduledDate, setScheduledDate] = useState(() => {
+    const date = new Date();
+    return date.toISOString().slice(0, 10);
+  });
+  const [scheduledTime, setScheduledTime] = useState('');
   const [notes, setNotes] = useState('');
   const [deliveryInfo, setDeliveryInfo] = useState({ address: '', lat: null, lng: null, fee: 0 });
   const [paymentReference, setPaymentReference] = useState('');
@@ -282,6 +287,11 @@ export default function Checkout() {
       setError('Please select your delivery location.');
       return;
     }
+    const scheduledFor = scheduledDate && scheduledTime ? `${scheduledDate}T${scheduledTime}` : '';
+    if (!scheduledFor || new Date(scheduledFor).getTime() < Date.now()) {
+      setError('Please choose a future date and time for your order.');
+      return;
+    }
 
     setSubmitting(true);
     setError('');
@@ -310,6 +320,7 @@ export default function Checkout() {
         deliveryLat: orderType === 'delivery' ? deliveryInfo.lat : undefined,
         deliveryLng: orderType === 'delivery' ? deliveryInfo.lng : undefined,
         deliveryFee: orderType === 'delivery' ? deliveryInfo.fee : undefined,
+        scheduledFor,
         paymentReference: paymentMethod === 'qrph' ? paymentReference : undefined,
         paymentAmount: paymentMethod === 'qrph' ? paymentDue : undefined,
         promoCode: appliedPromo ? appliedPromo.code : undefined
@@ -470,6 +481,22 @@ export default function Checkout() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Requested preparation date and time */}
+        <div className="glass-card p-5 animate-fade-in-up">
+          <label className="block text-sm font-bold text-surface-900 mb-1">When do you need your order?</label>
+          <p className="text-xs text-surface-500 mb-4">Choose the date and time you will pick up your order or receive your delivery.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="scheduled-date" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-surface-400">Date</label>
+              <input id="scheduled-date" type="date" value={scheduledDate} min={new Date().toISOString().slice(0, 10)} onChange={e => setScheduledDate(e.target.value)} className="input-field" required />
+            </div>
+            <div>
+              <label htmlFor="scheduled-time" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-surface-400">Time</label>
+              <input id="scheduled-time" type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)} className="input-field" required />
+            </div>
+          </div>
         </div>
 
         {!isFullRedemption && (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment, updateAdminOrderRefund } from '../../services/api';
+import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment, updateAdminOrderRefund, updateAdminOrderSchedule } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { AlertTriangle, CheckCircle, CircleAlert, MoreVertical, Trash2, XCircle } from 'lucide-react';
 import PaginationControls from './PaginationControls';
@@ -139,6 +139,18 @@ export default function OrdersTab() {
         title: 'Payment not ready',
         message: error.response?.data?.message || 'This payment could not be updated right now.',
       });
+    }
+  };
+
+  const handleScheduleDecision = async (order, scheduleStatus) => {
+    const scheduleNote = scheduleStatus === 'rejected'
+      ? window.prompt('Why can this requested date/time not be catered?') || ''
+      : '';
+    try {
+      await updateAdminOrderSchedule(order.id, scheduleStatus, scheduleNote);
+      await loadOrders();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to update the requested schedule.');
     }
   };
 
@@ -306,6 +318,8 @@ export default function OrdersTab() {
                     {order.customerPhone && <div className="text-[11px] text-surface-500">{order.customerPhone}</div>}
                     {order.customerEmail && <div className="text-[11px] text-surface-500 truncate max-w-[180px]">{order.customerEmail}</div>}
                     <div className="text-[10px] text-surface-400 uppercase font-black">{getOrderTypeLabel(order.orderType)}</div>
+                    {order.scheduledFor && <div className="mt-1 text-[11px] font-black text-primary-600">For: {formatDate(order.scheduledFor)}</div>}
+                    {order.scheduledFor && <div className={`text-[10px] font-black uppercase ${order.scheduleStatus === 'confirmed' ? 'text-emerald-600' : order.scheduleStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>{order.scheduleStatus === 'confirmed' ? 'Schedule confirmed' : order.scheduleStatus === 'rejected' ? 'Schedule rejected' : 'Schedule needs confirmation'}</div>}
                   </td>
                   <td className="p-4 min-w-[190px]">
                     <div className="space-y-1">
@@ -337,6 +351,12 @@ export default function OrdersTab() {
                     )}
                   </td>
                   <td className="p-4 text-right">
+                    {order.scheduledFor && order.scheduleStatus === 'pending' && (
+                      <div className="mb-2 flex justify-end gap-2">
+                        <button onClick={() => handleScheduleDecision(order, 'rejected')} className="rounded-lg bg-red-50 px-2 py-1 text-[10px] font-black uppercase text-red-600 hover:bg-red-100">Reject Date</button>
+                        <button onClick={() => handleScheduleDecision(order, 'confirmed')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">Confirm Date</button>
+                      </div>
+                    )}
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
                       <div className="mb-2 flex justify-end gap-2">
                         <button onClick={() => handlePaymentDecision(order, 'rejected')} className="rounded-lg bg-red-50 px-2 py-1 text-[10px] font-black uppercase text-red-600 hover:bg-red-100">Reject</button>
@@ -452,7 +472,15 @@ export default function OrdersTab() {
                 {order.customerPhone && <p className="text-[11px] text-surface-500">{order.customerPhone}</p>}
                 {order.customerEmail && <p className="text-[11px] text-surface-500 truncate">{order.customerEmail}</p>}
                 <p className="text-[10px] text-surface-400 uppercase font-black mt-1">{getOrderTypeLabel(order.orderType)}</p>
+                {order.scheduledFor && <p className="mt-1 text-[11px] font-black text-primary-600">For: {formatDate(order.scheduledFor)}</p>}
+                {order.scheduledFor && <p className={`text-[10px] font-black uppercase ${order.scheduleStatus === 'confirmed' ? 'text-emerald-600' : order.scheduleStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>{order.scheduleStatus === 'confirmed' ? 'Schedule confirmed' : order.scheduleStatus === 'rejected' ? 'Schedule rejected' : 'Schedule needs confirmation'}</p>}
               </div>
+              {order.scheduledFor && order.scheduleStatus === 'pending' && (
+                <div className="col-span-2 flex gap-2">
+                  <button onClick={() => handleScheduleDecision(order, 'rejected')} className="flex-1 rounded-xl bg-red-50 py-2 text-[10px] font-black uppercase text-red-600">Reject Date</button>
+                  <button onClick={() => handleScheduleDecision(order, 'confirmed')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">Confirm Date</button>
+                </div>
+              )}
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Total</p>
                 <p className="font-black text-surface-900">{formatCurrency(order.total)}</p>
