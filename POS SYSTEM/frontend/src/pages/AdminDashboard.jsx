@@ -32,6 +32,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [liveVisitors, setLiveVisitors] = useState(0);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { joinRoom, leaveRoom, connected, onEvent } = useSocket();
   const featureLocks = summary?.branding?.adminFeatureLocks || {};
   const featureLabels = {
@@ -233,6 +234,33 @@ export default function AdminDashboard() {
         </nav>
       </div>
 
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-surface-950/55 p-4 backdrop-blur-md animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-logout-title"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div className="w-full max-w-sm overflow-hidden rounded-[2rem] border border-primary-100 bg-white shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-6 pb-7 pt-6 text-white">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/30">
+                <LogOut className="h-7 w-7" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">Account action</p>
+              <h3 id="admin-logout-title" className="mt-1 font-heading text-2xl font-black">Sign out?</h3>
+            </div>
+            <div className="p-6">
+              <p className="leading-relaxed text-surface-600">Are you sure you want to sign out of the admin account?</p>
+            </div>
+            <div className="flex gap-3 border-t border-surface-100 bg-surface-50 p-6">
+              <button type="button" onClick={() => setShowLogoutConfirm(false)} className="flex-1 rounded-xl border border-surface-200 bg-white px-4 py-3 text-sm font-black text-surface-600 transition hover:bg-surface-100">Stay Signed In</button>
+              <button type="button" onClick={() => { setShowLogoutConfirm(false); logoutUser(); }} className="flex-1 rounded-xl bg-primary-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 active:scale-95">Sign Out</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="relative flex min-w-0 flex-1 flex-col min-h-0 overflow-hidden lg:h-screen">
         <header className="relative z-50 flex min-w-0 items-center justify-between gap-2 px-3 py-3 md:px-6 md:py-4 border-b border-surface-200 bg-white/80 backdrop-blur-xl flex-shrink-0">
@@ -258,7 +286,7 @@ export default function AdminDashboard() {
             </div>
             <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} />
             <button
-              onClick={logoutUser}
+              onClick={() => setShowLogoutConfirm(true)}
               aria-label="Log out"
               className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-600 transition-all hover:bg-red-100 hover:text-red-700"
             >
@@ -417,6 +445,14 @@ function LockedFeature({ featureName }) {
           <div className="mt-5 flex items-center justify-center gap-2 text-sm font-black text-primary-700">
             <Sparkles className="h-4 w-4" /> Unlock premium admin tools
           </div>
+          <a
+            href="https://facebook.com/jasonanthonytrillo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-primary-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 active:scale-95"
+          >
+            Contact us to upgrade
+          </a>
         </div>
       </div>
     </div>
