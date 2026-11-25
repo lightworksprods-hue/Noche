@@ -5,6 +5,16 @@ import { getTenants, createTenant, updateTenant } from '../services/api';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import { Building2, LogOut, Zap, Plus, AlertTriangle, CheckCircle, X } from 'lucide-react';
 
+const ADMIN_FEATURE_OPTIONS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'orders', label: 'Orders' },
+  { id: 'products', label: 'Products' },
+  { id: 'categories', label: 'Categories' },
+  { id: 'inventory', label: 'Stock / Inventory' },
+  { id: 'staff', label: 'Staff' },
+  { id: 'settings', label: 'Settings' }
+];
+
 export default function SuperAdminDashboard() {
   const { user, logoutUser } = useAuth();
   const navigate = useNavigate();
@@ -18,6 +28,7 @@ export default function SuperAdminDashboard() {
   const [editSaDelivery, setEditSaDelivery] = useState(false);
   const [editSaRewards, setEditSaRewards] = useState(false);
   const [editSaPromo, setEditSaPromo] = useState(false);
+  const [editFeatureLocks, setEditFeatureLocks] = useState({});
   const [updatingName, setUpdatingName] = useState(false);
   const [formData, setFormData] = useState({ name: '', slug: '', primaryColor: '#ec4899', adminName: '', adminEmail: '', adminPassword: '' });
   const [saving, setSaving] = useState(false);
@@ -85,7 +96,8 @@ export default function SuperAdminDashboard() {
         primaryColor: editColor,
         saDeliveryDisabled: editSaDelivery,
         saRewardsDisabled: editSaRewards,
-        saPromoDisabled: editSaPromo
+        saPromoDisabled: editSaPromo,
+        adminFeatureLocks: editFeatureLocks
       });
       setTenantToEdit(null);
       setEditName('');
@@ -93,6 +105,7 @@ export default function SuperAdminDashboard() {
       setEditSaDelivery(false);
       setEditSaRewards(false);
       setEditSaPromo(false);
+      setEditFeatureLocks({});
       loadTenants();
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to update store settings');
@@ -247,6 +260,7 @@ export default function SuperAdminDashboard() {
                           setEditSaDelivery(tenant.saDeliveryDisabled || false);
                           setEditSaRewards(tenant.saRewardsDisabled || false);
                           setEditSaPromo(tenant.saPromoDisabled || false);
+                          setEditFeatureLocks(tenant.adminFeatureLocks || {});
                           setTenantToEdit(tenant);
                         }}
                         className="font-black text-[10px] uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-all mr-3"
@@ -490,6 +504,31 @@ export default function SuperAdminDashboard() {
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${editSaPromo ? 'translate-x-6' : 'translate-x-1'}`} />
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4">
+                  <div className="mb-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Admin Feature Access</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">Lock selected admin areas. The tenant will see an Upgrade to PRO PLAN gate.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {ADMIN_FEATURE_OPTIONS.map(feature => {
+                      const locked = Boolean(editFeatureLocks[feature.id]);
+                      return (
+                        <button
+                          key={feature.id}
+                          type="button"
+                          onClick={() => setEditFeatureLocks(current => ({ ...current, [feature.id]: !locked }))}
+                          className={`flex items-center justify-between rounded-xl border px-3 py-3 text-left transition-all ${locked ? 'border-red-500/30 bg-red-500/10' : 'border-white/5 bg-slate-800 hover:bg-slate-700'}`}
+                        >
+                          <span className="text-xs font-bold text-white">{feature.label}</span>
+                          <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-widest ${locked ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                            {locked ? 'Locked' : 'Open'}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

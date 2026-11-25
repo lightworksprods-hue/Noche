@@ -13,7 +13,7 @@ import AdminNotifications from '../components/admin/AdminNotifications';
 import { formatCurrency } from '../utils/helpers';
 import { applyTheme, clearTheme } from '../utils/theme';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
-import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye } from 'lucide-react';
+import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 
 export default function AdminDashboard() {
@@ -33,6 +33,16 @@ export default function AdminDashboard() {
   const [liveVisitors, setLiveVisitors] = useState(0);
   const [showDrawer, setShowDrawer] = useState(false);
   const { joinRoom, leaveRoom, connected, onEvent } = useSocket();
+  const featureLocks = summary?.branding?.adminFeatureLocks || {};
+  const featureLabels = {
+    overview: 'Overview',
+    orders: 'Orders',
+    products: 'Products',
+    categories: 'Categories',
+    inventory: 'Stock / Inventory',
+    staff: 'Staff',
+    settings: 'Settings'
+  };
 
   // Dynamic favicon & title
   useDynamicBranding("Mona's Pang Noche Buena Admin Dashboard", user?.tenantFavicon || '/logo.png');
@@ -165,6 +175,7 @@ export default function AdminDashboard() {
                 >
                   <span className="text-lg leading-none">{item.icon}</span>
                   <span className="text-sm">{item.label}</span>
+                  {featureLocks[item.id] && <LockKeyhole className="ml-auto h-3.5 w-3.5 text-amber-300" />}
                   {item.badge > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">{item.badge > 99 ? '99+' : item.badge}</span>}
                 </button>
               ))}
@@ -213,6 +224,7 @@ export default function AdminDashboard() {
                 >
                   <span className="text-lg leading-none">{item.icon}</span>
                   <span className="text-sm">{item.label}</span>
+                  {featureLocks[item.id] && <LockKeyhole className="ml-auto h-3.5 w-3.5 text-amber-300" />}
                   {item.badge > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">{item.badge > 99 ? '99+' : item.badge}</span>}
                 </button>
               ))}
@@ -256,6 +268,10 @@ export default function AdminDashboard() {
         </header>
 
         <div className="relative min-w-0 flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">
+          {featureLocks[activeTab] ? (
+            <LockedFeature featureName={featureLabels[activeTab]} />
+          ) : (
+            <>
           {activeTab === 'overview' && summary && (
             <div className="animate-fade-in w-full max-w-[1400px] mx-auto space-y-6 sm:space-y-8">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -355,6 +371,8 @@ export default function AdminDashboard() {
           {activeTab === 'staff' && <StaffTab />}
           {activeTab === 'inventory' && <InventoryTab />}
           {activeTab === 'settings' && <SettingsTab />}
+            </>
+          )}
         </div>
       </main>
     </div>
@@ -379,6 +397,28 @@ function StatCard({ title, value, icon, color }) {
       </div>
       <p className="text-surface-500 font-bold text-sm mb-1 leading-snug">{title}</p>
       <p className="text-2xl sm:text-3xl font-black text-surface-900 tracking-tight break-words">{value}</p>
+    </div>
+  );
+}
+
+function LockedFeature({ featureName }) {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-4">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-primary-200 bg-white text-center shadow-xl shadow-primary-500/10">
+        <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-6 pb-8 pt-8 text-white">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/15 ring-1 ring-white/30">
+            <LockKeyhole className="h-8 w-8" />
+          </div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">{featureName} is locked</p>
+          <h2 className="mt-2 font-heading text-3xl font-black tracking-tight">Upgrade to PRO PLAN</h2>
+        </div>
+        <div className="p-7">
+          <p className="text-surface-600">This feature is currently unavailable on your plan. Upgrade to PRO PLAN to unlock this feature!</p>
+          <div className="mt-5 flex items-center justify-center gap-2 text-sm font-black text-primary-700">
+            <Sparkles className="h-4 w-4" /> Unlock premium admin tools
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

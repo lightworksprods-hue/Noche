@@ -30,6 +30,7 @@ model Tenant {
   saDeliveryDisabled Boolean @default(false)
   saRewardsDisabled  Boolean @default(false)
   saPromoDisabled    Boolean @default(false)
+  adminFeatureLocks  Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

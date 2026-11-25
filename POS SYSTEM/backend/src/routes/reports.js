@@ -278,7 +278,7 @@ router.get('/summary', authenticate, authorize('admin'), async (req, res) => {
     // Fetch Tenant Branding
     const tenant = await prisma.tenant.findUnique({
       where: { id: req.tenantId },
-      select: { primaryColor: true, secondaryColor: true }
+      select: { primaryColor: true, secondaryColor: true, adminFeatureLocks: true }
     });
 
     const [todayAgg, weekAgg, monthAgg, todayExp, weekExp, monthExp, totalProducts, lowStock, totalVisitsSetting, inventoryLogs, rawLogs] = await Promise.all([
@@ -427,7 +427,8 @@ router.get('/summary', authenticate, authorize('admin'), async (req, res) => {
         liveVisitors,
         branding: {
           primaryColor: tenant?.primaryColor,
-          secondaryColor: tenant?.secondaryColor
+          secondaryColor: tenant?.secondaryColor,
+          adminFeatureLocks: tenant?.adminFeatureLocks || {}
         }
       }
     });

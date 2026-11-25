@@ -7,7 +7,7 @@ import { useSocket } from '../context/SocketContext';
 import { GoogleLogin } from '@react-oauth/google';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
 import { applyTheme, clearTheme } from '../utils/theme';
-import { Gem, Rocket, CheckCircle, AlertTriangle, PartyPopper, ArrowLeft } from 'lucide-react';
+import { Gem, Rocket, CheckCircle, AlertTriangle, PartyPopper, ArrowLeft, LogOut } from 'lucide-react';
 
 export default function MemberPortal() {
   const [mode, setMode] = useState('login'); // login, register, verify
@@ -36,6 +36,7 @@ export default function MemberPortal() {
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPasswords, setShowForgotPasswords] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [tenantData, setTenantData] = useState(null);
   const [loadingBranding, setLoadingBranding] = useState(true);
@@ -369,7 +370,7 @@ export default function MemberPortal() {
                 </h1>
                 {user ? (
                   <p className="text-[#6D5D53] text-sm">
-                    Not you? <button onClick={logoutUser} className="text-primary-700 font-bold hover:text-primary-800 transition-colors">Sign Out</button>
+                    Not you? <button onClick={() => setShowLogoutConfirm(true)} className="text-primary-700 font-bold hover:text-primary-800 transition-colors">Sign Out</button>
                   </p>
                 ) : (
                   <p className="text-[#6D5D53] text-sm">
@@ -601,6 +602,55 @@ export default function MemberPortal() {
           )}
         </div>
       </div>
+
+      {/* Sign Out Confirmation */}
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-[#2D241E]/45 p-4 backdrop-blur-md animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="customer-logout-title"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-[2rem] bg-[#FAF7F2] shadow-2xl animate-scale-in"
+            style={{ border: `1px solid ${brandingColor}35` }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 pb-7 pt-6 text-white" style={{ background: `linear-gradient(145deg, ${brandingColor} 0%, #111827 145%)` }}>
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/30">
+                <LogOut className="h-7 w-7" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">Account action</p>
+              <h3 id="customer-logout-title" className="mt-1 font-heading text-2xl font-black">Sign out?</h3>
+            </div>
+            <div className="p-6">
+              <p className="leading-relaxed text-[#6D5D53]">
+                Are you sure you want to sign out of your customer account?
+              </p>
+            </div>
+            <div className="flex gap-3 border-t border-[#EFEBE4] bg-[#F3ECE0] p-6">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 rounded-xl border border-[#DCD6C8] bg-[#FAF7F2] px-4 py-3 text-sm font-black text-[#6D5D53] transition hover:bg-white"
+              >
+                Stay Signed In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logoutUser();
+                }}
+                className="flex-1 rounded-xl bg-primary-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 active:scale-95"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
