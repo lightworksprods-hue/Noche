@@ -61,9 +61,10 @@ export default function Landing() {
 
   // Splash screen auto-dismiss
   useEffect(() => {
-    if (!loading && tenant) {
-      const fadeTimer = setTimeout(() => setSplashFading(true), 2000);
-      const hideTimer = setTimeout(() => setShowSplash(false), 2800);
+    if (!loading) {
+      // Still show the storefront if the backend is waking up or unavailable.
+      const fadeTimer = setTimeout(() => setSplashFading(true), tenant ? 2000 : 400);
+      const hideTimer = setTimeout(() => setShowSplash(false), tenant ? 2800 : 1200);
       return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
     }
   }, [loading, tenant]);
@@ -72,6 +73,7 @@ export default function Landing() {
     const init = async () => {
       // Check for tenant from URL (defaulting to project-million)
       const tenantSlug = searchParams.get('tenant') || 'project-million';
+      try {
       try {
         const res = await getPublicTenant(tenantSlug);
         if (res.data.success) {
@@ -125,7 +127,10 @@ export default function Landing() {
         localStorage.removeItem(lastOrderKey);
       }
       setActiveOrders(validOrders);
+      } finally {
+      // Never keep the entire landing page invisible because the API is unavailable.
       setLoading(false);
+      }
     };
     init();
   }, [searchParams, user?.id]);

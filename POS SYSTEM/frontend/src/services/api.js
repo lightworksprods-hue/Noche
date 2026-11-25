@@ -4,6 +4,8 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' :
 
 const api = axios.create({
   baseURL: API_URL,
+  // Avoid leaving the storefront blank while Render is sleeping or unavailable.
+  timeout: 15000,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' }
 });
