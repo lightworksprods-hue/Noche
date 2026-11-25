@@ -272,7 +272,7 @@ export default function Landing() {
       </div>
 
       {/* Main Content Wrapper - Centered */}
-      <div className="relative z-20 flex flex-1 min-h-[calc(100dvh-82px)] w-full max-w-7xl mx-auto flex-col items-center justify-center px-6 py-12 text-center animate-fade-in-up sm:px-8 sm:py-16 lg:px-12 lg:py-8">
+      <div className="relative z-20 flex flex-1 min-h-[calc(100dvh-82px)] w-full max-w-6xl mx-auto flex-col items-center justify-center px-5 py-10 text-center animate-fade-in-up sm:px-8 sm:py-12 md:py-8 lg:px-12 lg:py-8">
         {isCustomer && (
           <div className="inline-flex flex-col items-center gap-2 mb-8 animate-fade-in">
             <div className="bg-emerald-500/10 border border-emerald-500/20 px-8 py-3 rounded-[2rem] text-emerald-400 font-bold text-lg backdrop-blur-md shadow-xl shadow-emerald-500/10 flex flex-col items-center">
@@ -282,12 +282,12 @@ export default function Landing() {
         )}
 
         <div className="flex justify-center mb-8 sm:mb-10 lg:mb-7">
-          <div className="w-24 h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 rounded-[40px] overflow-hidden shadow-2xl ring-8 ring-white/5 animate-scale-in transition-transform hover:scale-110 duration-500 bg-white/10">
+          <div className="w-24 h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-[40px] overflow-hidden shadow-2xl ring-8 ring-white/5 animate-scale-in transition-transform hover:scale-110 duration-500 bg-white/10">
             <img src="/logo.png" className="w-full h-full object-cover" alt="Mona's Pang Noche Buena" onError={(e) => { e.currentTarget.src = '/logo.png'; }} />
           </div>
         </div>
 
-        <h1 className="font-heading text-5xl sm:text-6xl md:text-8xl lg:text-[clamp(5rem,8vw,9rem)] font-black text-white leading-[0.9] mb-10 lg:mb-9 uppercase tracking-tighter">
+        <h1 className="font-heading text-5xl sm:text-6xl md:text-7xl lg:text-[clamp(4rem,6vw,6.5rem)] font-black text-white leading-[0.9] mb-9 md:mb-8 lg:mb-8 uppercase tracking-tighter">
           MONA'S PANG
           <br />
           <span style={{ color: primaryColor }} className="drop-shadow-[0_0_30px_rgba(10,61,1,0.5)]">
@@ -297,7 +297,7 @@ export default function Landing() {
 
 
         {/* Action Buttons */}
-        <div className="flex flex-col items-center gap-4 w-full max-w-sm lg:max-w-lg mx-auto">
+        <div className="flex flex-col items-center gap-4 w-full max-w-sm lg:max-w-md mx-auto">
           {user && user.role !== 'customer' ? (
             <>
               <Link
@@ -313,7 +313,7 @@ export default function Landing() {
             </>
           ) : (
             <>
-              <Link to={menuLink} className="btn-custom w-full text-xl lg:text-2xl py-6 lg:py-7 rounded-3xl font-black tracking-widest uppercase flex items-center justify-center gap-3 shadow-2xl transition-all hover:scale-105" id="start-order-btn">
+              <Link to={menuLink} className="btn-custom w-full text-xl md:text-lg lg:text-xl py-6 md:py-5 lg:py-6 rounded-3xl font-black tracking-widest uppercase flex items-center justify-center gap-3 shadow-2xl transition-all hover:scale-105" id="start-order-btn">
                 {isCustomer ? 'Start Ordering' : 'Start Order'}
               </Link>
 
@@ -389,17 +389,26 @@ export default function Landing() {
       <footer className="relative z-10 mt-auto w-full border-t border-white/15 px-4 py-3 shadow-lg" style={{ backgroundColor: primaryColor }}>
         <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-3 sm:px-6 md:grid-cols-2 md:px-8">
           <div className="min-w-0">
-            <Link to="/" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 shadow-sm transition-transform hover:scale-[1.02]">
+            <a
+              href="https://www.facebook.com/monabuque1"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 shadow-sm transition-transform hover:scale-[1.02]"
+              aria-label="Visit Mona's Pang Noche Buena on Facebook"
+            >
               <img
                 src={tenant?.logo ? getAbsoluteUrl(tenant.logo) : '/logo.png'}
                 className="h-6 w-6 rounded-md object-cover"
                 alt={tenant?.name || 'Store logo'}
                 onError={(e) => { e.currentTarget.src = '/logo.png'; }}
               />
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 text-[#1877F2]" fill="currentColor">
+                <path d="M14 8h3V4h-3c-2.76 0-5 2.24-5 5v3H6v4h3v5h4v-5h3l1-4h-4V9c0-.55.45-1 1-1Z" />
+              </svg>
               <span className="truncate text-xs font-black tracking-tight" style={{ color: primaryColor }}>
                 {tenant?.name || "Mona's Pang Noche Buena"}
               </span>
-            </Link>
+            </a>
             <p className="mt-1 text-[10px] font-medium leading-snug text-white/90 sm:text-xs">
               Villanueva Extension, Butuan City, Agusan del Norte<br />
               Monday–Saturday: 9:00 AM–6:00 PM · Sunday: 9:00 AM–3:00 PM
