@@ -178,12 +178,12 @@ export default function OrdersTab() {
 
       {confirmCancel && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in sm:items-center"
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-order-title"
         >
-          <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-primary-100 bg-white shadow-2xl animate-scale-in">
+          <div className="my-0 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[2rem] border border-primary-100 bg-white shadow-2xl animate-scale-in sm:my-0">
             <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-6 pb-7 pt-6 text-white">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25">
                 <XCircle className="h-7 w-7" />

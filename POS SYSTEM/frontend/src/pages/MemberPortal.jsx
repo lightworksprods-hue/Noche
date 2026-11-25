@@ -39,6 +39,7 @@ export default function MemberPortal() {
 
   const [tenantData, setTenantData] = useState(null);
   const [loadingBranding, setLoadingBranding] = useState(true);
+  const brandingColor = tenantData?.primaryColor || '#ec4899';
   const [searchParams] = useSearchParams();
   const { loginUser, logoutUser, user } = useAuth();
   const navigate = useNavigate();
@@ -322,11 +323,14 @@ export default function MemberPortal() {
   if (loadingBranding) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FAF6EE] via-[#FDFBF7] to-[#F5EFE4] flex flex-col items-center justify-center p-4">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-4"
+      style={{ background: `linear-gradient(135deg, ${brandingColor}12 0%, #FDFBF7 48%, ${brandingColor}08 100%)` }}
+    >
       {/* Background Decor */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-64 h-64 bg-[#D09A6A]/5 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-[#2D241E]/5 rounded-full blur-[100px]"></div>
+        <div className="absolute top-0 left-1/4 w-64 h-64 rounded-full blur-[100px]" style={{ backgroundColor: `${brandingColor}12` }}></div>
+        <div className="absolute bottom-0 right-1/4 w-64 h-64 rounded-full blur-[100px]" style={{ backgroundColor: `${brandingColor}08` }}></div>
       </div>
 
       <div className="w-full max-w-md relative z-10">
@@ -335,7 +339,7 @@ export default function MemberPortal() {
           <ArrowLeft className="h-4 w-4" /> Back to Kiosk
         </Link>
 
-        <div className="bg-[#FAF7F2] border border-[#EFEBE4] rounded-[40px] p-8 md:p-10 shadow-2xl shadow-[#DCD6C8]/40 relative overflow-hidden">
+        <div className="bg-[#FAF7F2] rounded-[40px] p-8 md:p-10 shadow-2xl shadow-[#DCD6C8]/40 relative overflow-hidden" style={{ border: `1px solid ${brandingColor}25` }}>
           {/* Success State */}
           {success ? (
             <div className="text-center py-6 animate-fade-in">
@@ -365,7 +369,7 @@ export default function MemberPortal() {
                 </h1>
                 {user ? (
                   <p className="text-[#6D5D53] text-sm">
-                    Not you? <button onClick={logoutUser} className="text-indigo-700 font-bold hover:text-indigo-850 transition-colors">Sign Out</button>
+                    Not you? <button onClick={logoutUser} className="text-primary-700 font-bold hover:text-primary-800 transition-colors">Sign Out</button>
                   </p>
                 ) : (
                   <p className="text-[#6D5D53] text-sm">
@@ -449,7 +453,7 @@ export default function MemberPortal() {
                             type="button"
                             onClick={handleResendRegisterOTP}
                             disabled={loading}
-                            className="text-indigo-600 hover:text-indigo-500 text-xs font-semibold hover:underline transition-colors disabled:opacity-50"
+                            className="text-primary-600 hover:text-primary-700 text-xs font-semibold hover:underline transition-colors disabled:opacity-50"
                           >
                             Resend Code
                           </button>
@@ -515,7 +519,7 @@ export default function MemberPortal() {
                                   setShowForgotModal(true);
                                   setForgotEmail(formData.email);
                                 }}
-                                className="text-indigo-600 hover:underline hover:text-indigo-550 transition-colors font-semibold"
+                                className="text-primary-600 hover:underline hover:text-primary-700 transition-colors font-semibold"
                               >
                                 Forgot Password?
                               </button>
@@ -581,7 +585,7 @@ export default function MemberPortal() {
                         {mode === 'login' ? "Don't have an account?" : "Already a member?"}
                         <button
                           onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
-                          className="ml-2 text-indigo-600 font-bold hover:text-indigo-550 transition-colors"
+                          className="ml-2 text-primary-600 font-bold hover:text-primary-700 transition-colors"
                         >
                           {mode === 'login' ? 'Join Now' : 'Sign In'}
                         </button>
@@ -673,7 +677,7 @@ export default function MemberPortal() {
                     type="button" 
                     onClick={handleResendForgotOTP}
                     disabled={forgotLoading}
-                    className="text-indigo-600 hover:underline hover:text-indigo-550 transition-colors font-semibold disabled:opacity-50"
+                    className="text-primary-600 hover:underline hover:text-primary-700 transition-colors font-semibold disabled:opacity-50"
                   >
                     Didn't receive code? Resend Code
                   </button>

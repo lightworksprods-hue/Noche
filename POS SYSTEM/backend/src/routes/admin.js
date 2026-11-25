@@ -6,8 +6,20 @@ const prisma = require('../lib/prisma');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { sendBookedOrderEmail } = require('../lib/mailer');
 
 const supabase = require('../lib/supabase');
+
+const sendBookedEmailOnce = async (order, tenantId) => {
+  if (!order?.customerEmail || order.bookedEmailSentAt) return;
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, logo: true, primaryColor: true } });
+    await sendBookedOrderEmail(order, tenant || {});
+    await prisma.order.update({ where: { id: order.id }, data: { bookedEmailSentAt: new Date() } });
+  } catch (error) {
+    console.error(`Booked order email skipped for #${order.orderNumber}:`, error.message);
+  }
+};
 
 // Keep the existing ProductAddon relation in sync so cashier, ordering and
 // inventory code can continue consuming add-ons without product-level setup.
@@ -293,6 +305,7 @@ router.patch('/orders/:id/status', authenticate, authorize('admin'), async (req,
     });
 
     if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, status);
+    if (status === 'booked' && order.status !== 'booked') await sendBookedEmailOnce(updated, req.tenantId);
     res.json({ success: true, data: updated });
   } catch (error) {
     console.error('Admin order status error:', error);
@@ -391,6 +404,7 @@ router.patch('/orders/:id/payment', authenticate, authorize('admin'), async (req
     });
 
     if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, paymentStatus === 'rejected' ? 'cancelled' : (verifyingInitialPayment ? 'booked' : 'payment_updated'));
+    if (verifyingInitialPayment && paymentStatus !== 'rejected') await sendBookedEmailOnce(updated, req.tenantId);
     res.json({ success: true, data: updated });
   } catch (error) {
     console.error('Admin order payment error:', error);
