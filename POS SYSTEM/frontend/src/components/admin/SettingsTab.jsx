@@ -484,7 +484,7 @@ export default function SettingsTab() {
                       reader.onloadend = async () => {
                         setMessage('Uploading QR Ph code...');
                         try {
-                          const res = await uploadImage({ image: reader.result, name: 'qrph' });
+                          const res = await uploadImage({ image: reader.result, name: 'qrph', bucket: 'products' });
                           setSettings({ ...settings, gcash_qr: res.data.url });
                           setMessage('QR Ph code updated!');
                         } catch (error) { alert('Upload failed'); }
