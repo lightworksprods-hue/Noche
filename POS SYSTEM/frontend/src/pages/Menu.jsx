@@ -600,17 +600,6 @@ export default function Menu() {
           <div className="flex items-center gap-1.5 md:gap-4 relative flex-wrap sm:flex-nowrap justify-end text-right">
             {isCustomer && user && !branding?.saRewardsDisabled && (
               <>
-                <button
-                  onClick={() => setShowRewards(true)}
-                  className="animate-fade-in flex items-center gap-3 bg-emerald-50 border border-emerald-100 px-2 py-1.5 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl shadow-sm hover:bg-emerald-100 transition-all active:scale-95 group shrink-0"
-                >
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg sm:rounded-xl flex items-center justify-center text-white text-base sm:text-lg shadow-lg shadow-emerald-500/20 group-hover:scale-110 transition-transform"><Bean className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-100" /></div>
-                  <div className="text-left hidden sm:block">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none mb-0.5">Points</p>
-                    <p className="text-sm font-black text-emerald-900 leading-none">{Math.floor(user.points || 0)}</p>
-                  </div>
-                </button>
-
                 <div className="relative shrink-0">
                   <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
@@ -699,9 +688,9 @@ export default function Menu() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 pt-4 md:pt-6 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-16">
+      <div className="max-w-[1480px] mx-auto px-4 md:px-6 lg:px-8 pt-4 md:pt-6 flex flex-col md:flex-row gap-8 md:gap-10 lg:gap-12">
         {/* Left Sidebar: Categories */}
-        <div className="w-full md:w-56 lg:w-64 flex-shrink-0 animate-fade-in-up relative max-w-full min-w-0">
+        <div className="w-full md:w-56 lg:w-72 flex-shrink-0 animate-fade-in-up relative max-w-full min-w-0">
           <div className="md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] flex flex-col">
             <div className="flex-shrink-0 mb-6">
               <div className="flex items-start gap-3 mb-2 md:mb-3">
@@ -754,7 +743,7 @@ export default function Menu() {
                 <span className="w-2 h-8 rounded-full" style={{ backgroundColor: brandingColor }}></span>
                 {cat.name}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
                 {cat.products?.map((product, idx) => (
                   <button
                     key={product.id}
