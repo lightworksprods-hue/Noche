@@ -7,7 +7,7 @@ import { useSocket } from '../context/SocketContext';
 import { GoogleLogin } from '@react-oauth/google';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
 import { applyTheme, clearTheme } from '../utils/theme';
-import { Gem, Rocket, CheckCircle, AlertTriangle, PartyPopper, ArrowLeft, LogOut, Copy } from 'lucide-react';
+import { Gem, Rocket, CheckCircle, AlertTriangle, PartyPopper, ArrowLeft, LogOut } from 'lucide-react';
 
 export default function MemberPortal() {
   const [mode, setMode] = useState('login'); // login, register, verify
@@ -36,18 +36,6 @@ export default function MemberPortal() {
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPasswords, setShowForgotPasswords] = useState(false);
-  const [copiedCode, setCopiedCode] = useState('');
-
-  const copyOtpCode = async (code) => {
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode(''), 1800);
-    } catch {
-      setForgotError('Copy failed. Please select and copy the code manually.');
-    }
-  };
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [tenantData, setTenantData] = useState(null);
@@ -63,6 +51,18 @@ export default function MemberPortal() {
   const postLoginPath = redirectParam === 'checkout'
     ? `/checkout?tenant=${tenantSlug}`
     : '/menu';
+
+  useEffect(() => {
+    const emailFromLink = searchParams.get('email');
+    const otpFromLink = searchParams.get('otp');
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (hashParams.get('action') !== 'verify') return;
+    const linkedEmail = hashParams.get('email') || emailFromLink;
+    const linkedOtp = hashParams.get('otp') || otpFromLink;
+    if (linkedEmail) setFormData(current => ({ ...current, email: linkedEmail }));
+    if (linkedOtp) setOtp(linkedOtp);
+    setMode('verify');
+  }, [searchParams]);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   const getCustomerErrorMessage = (err, fallback) => {
@@ -454,7 +454,6 @@ export default function MemberPortal() {
                           placeholder="000000"
                           required
                         />
-                        <button type="button" onClick={() => copyOtpCode(otp)} disabled={!otp} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 py-2.5 text-xs font-black uppercase tracking-widest text-primary-700 transition hover:bg-primary-100 disabled:opacity-40"><Copy className="h-4 w-4" /> {copiedCode === otp && otp ? 'Copied!' : 'Copy Code'}</button>
                         <div className="flex justify-between items-center mt-4 px-1">
                           <button
                             type="button"
@@ -734,7 +733,6 @@ export default function MemberPortal() {
                     value={otpCode}
                     onChange={e => setOtpCode(e.target.value)}
                   />
-                  <button type="button" onClick={() => copyOtpCode(otpCode)} disabled={!otpCode} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 py-2.5 text-xs font-black uppercase tracking-widest text-primary-700 transition hover:bg-primary-100 disabled:opacity-40"><Copy className="h-4 w-4" /> {copiedCode === otpCode && otpCode ? 'Copied!' : 'Copy Code'}</button>
                 </div>
                 <div className="flex justify-end text-xs px-1">
                   <button 

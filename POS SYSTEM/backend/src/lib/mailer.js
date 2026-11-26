@@ -26,6 +26,10 @@ const sendBrevoEmail = async ({ sender, to, subject, htmlContent }) => {
 const sendOTPEmail = async (email, otp, tenant = {}) => {
   const { name = "Mona's Pang Noche Buena", logo, primaryColor = '#ec4899' } = tenant;
   const otpDigits = String(otp).split('').map(digit => `<span class="otp-digit">${digit}</span>`).join('');
+  const frontendUrl = process.env.FRONTEND_URL || 'https://noche.lightworksprods.workers.dev';
+  const verificationUrl = new URL('/member-portal', frontendUrl);
+  if (tenant?.slug) verificationUrl.searchParams.set('tenant', tenant.slug);
+  verificationUrl.hash = new URLSearchParams({ action: 'verify', email, otp: String(otp) }).toString();
 
   let absoluteLogo = logo || 'https://hometownbrew.jasonanthonytrillo.workers.dev/logo.png';
   if (logo && logo.startsWith('/')) {
@@ -124,6 +128,8 @@ const sendOTPEmail = async (email, otp, tenant = {}) => {
                           <p class="otp-label">Your verification code</p>
                           <div aria-label="Verification code">${otpDigits}</div>
                         </div>
+
+                        <a href="${verificationUrl.toString()}" style="display:inline-block;margin:4px 0 26px;padding:14px 26px;border-radius:12px;background:${primaryColor};color:#ffffff;text-decoration:none;font-size:13px;font-weight:800;letter-spacing:.04em;">Open Verification Page</a>
                         
                         <p class="security-notice">
                           <span style="display:inline-block; width:16px; height:16px; line-height: 16px; text-align: center; background:${primaryColor}20; color:${primaryColor}; border-radius:50%; font-size:10px; font-weight:bold; margin-right:6px;">!</span>
