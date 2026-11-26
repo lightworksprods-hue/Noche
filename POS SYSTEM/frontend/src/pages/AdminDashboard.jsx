@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getAdminSummary } from '../services/api';
 import ProductsTab from '../components/admin/ProductsTab';
 import CategoriesTab from '../components/admin/CategoriesTab';
+import PromosTab from '../components/admin/PromosTab';
 import OrdersTab from '../components/admin/OrdersTab';
 import InventoryTab from '../components/admin/InventoryTab';
 import SettingsTab from '../components/admin/SettingsTab';
@@ -14,14 +15,14 @@ import UtangTracker from '../components/admin/UtangTracker';
 import { formatCurrency } from '../utils/helpers';
 import { applyTheme, clearTheme } from '../utils/theme';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
-import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles, WalletCards } from 'lucide-react';
+import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles, WalletCards, Tag } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 
 export default function AdminDashboard() {
   const { user, logoutUser, performLogout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const allowedTabs = ['overview', 'orders', 'utang', 'products', 'categories', 'inventory', 'staff', 'settings'];
+  const allowedTabs = ['overview', 'orders', 'utang', 'products', 'categories', 'promos', 'inventory', 'staff', 'settings'];
   const requestedTab = searchParams.get('tab') || 'overview';
   const activeTab = allowedTabs.includes(requestedTab) ? requestedTab : 'overview';
 
@@ -42,6 +43,7 @@ export default function AdminDashboard() {
     utang: 'Utang Tracker',
     products: 'Products',
     categories: 'Categories',
+    promos: 'Promos',
     inventory: 'Stock / Inventory',
     staff: 'Staff',
     settings: 'Settings'
@@ -117,6 +119,7 @@ export default function AdminDashboard() {
       items: [
         { id: 'products', label: 'Products', icon: <PackageSearch className="w-5 h-5" /> },
         { id: 'categories', label: 'Categories', icon: <FolderTree className="w-5 h-5" /> },
+        { id: 'promos', label: 'Promos', icon: <Tag className="w-5 h-5" /> },
       ]
     },
     {
@@ -397,6 +400,7 @@ export default function AdminDashboard() {
           {activeTab === 'orders' && <OrdersTab />}
           {activeTab === 'utang' && <UtangTracker />}
           {activeTab === 'categories' && <CategoriesTab />}
+          {activeTab === 'promos' && <PromosTab />}
           {activeTab === 'products' && <ProductsTab />}
           {activeTab === 'staff' && <StaffTab />}
           {activeTab === 'inventory' && <InventoryTab />}

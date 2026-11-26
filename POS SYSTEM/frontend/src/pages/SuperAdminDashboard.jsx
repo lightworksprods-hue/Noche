@@ -11,6 +11,7 @@ const ADMIN_FEATURE_OPTIONS = [
   { id: 'utang', label: 'Utang Tracker' },
   { id: 'products', label: 'Products' },
   { id: 'categories', label: 'Categories' },
+  { id: 'promos', label: 'Promos' },
   { id: 'inventory', label: 'Stock / Inventory' },
   { id: 'staff', label: 'Staff' },
   { id: 'settings', label: 'Settings' }
