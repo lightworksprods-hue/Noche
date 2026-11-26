@@ -591,11 +591,11 @@ export default function ProductsTab() {
                         <div className="mt-4 space-y-4 border-t border-surface-100 pt-4">
                           <div className="space-y-3">
                             {schedule.dates.map((entry, index) => (
-                              <div key={index} className="grid grid-cols-[1.2fr_1fr_1fr_auto] items-end gap-2">
+                              <div key={index} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1.2fr_1fr_1fr_auto]">
                                 <label className="text-xs font-bold text-surface-500">Date<input type="date" value={entry.date} onChange={e => { const dates = [...schedule.dates]; dates[index] = { ...entry, date: e.target.value }; setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates } }); }} className="input-field mt-1 w-full bg-white" /></label>
                                 <label className="text-xs font-bold text-surface-500">From<input type="time" value={entry.startTime} onChange={e => { const dates = [...schedule.dates]; dates[index] = { ...entry, startTime: e.target.value }; setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates } }); }} className="input-field mt-1 w-full bg-white" /></label>
                                 <label className="text-xs font-bold text-surface-500">Until<input type="time" value={entry.endTime} onChange={e => { const dates = [...schedule.dates]; dates[index] = { ...entry, endTime: e.target.value }; setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates } }); }} className="input-field mt-1 w-full bg-white" /></label>
-                                <button type="button" onClick={() => setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates: schedule.dates.filter((_, dateIndex) => dateIndex !== index) } })} className="mb-0.5 rounded-lg px-2 py-2 text-xs font-black text-red-500 hover:bg-red-50">Remove</button>
+                                <button type="button" onClick={() => setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates: schedule.dates.filter((_, dateIndex) => dateIndex !== index) } })} className="rounded-lg px-2 py-2 text-left text-xs font-black text-red-500 hover:bg-red-50 sm:mb-0.5 sm:text-center">Remove</button>
                               </div>
                             ))}
                             <button type="button" onClick={() => setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates: [...schedule.dates, { date: '', startTime: '09:00', endTime: '17:00' }] } })} className="rounded-lg bg-primary-50 px-3 py-2 text-xs font-black text-primary-700 hover:bg-primary-100">+ Add another date</button>

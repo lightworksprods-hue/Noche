@@ -581,11 +581,6 @@ export default function Checkout() {
           {selectedSchedule && <p className="mt-2 text-[11px] font-bold text-surface-500">Available time: {selectedSchedule.startTime}–{selectedSchedule.endTime}</p>}
           {commonScheduleSlots && commonScheduleSlots.length === 0 && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">These products do not share a common availability date. Please remove one product or place a separate order.</p>}
           {commonScheduleSlots && commonScheduleSlots.length > 0 && <p className="mt-3 text-xs font-bold text-blue-700">This order can be scheduled only on the common available dates and times shown above.</p>}
-          {preOrderItems.length > 0 && (
-            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
-              {preOrderItems.map(item => item.name).join(', ')} will be handled as a pre-order for your selected date. You can still order it.
-            </div>
-          )}
         </div>
 
         {!isFullRedemption && (
