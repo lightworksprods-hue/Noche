@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getOrder, cancelOrder, getPublicTenant, submitFeedback, confirmDeliveryReceived, subscribeToPush, getVapidKey } from '../services/api';
+import { getOrder, cancelOrder, updateOrderSchedule, getPublicTenant, submitFeedback, confirmDeliveryReceived, subscribeToPush, getVapidKey } from '../services/api';
 import { useSocket } from '../context/SocketContext';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -156,6 +156,11 @@ export default function OrderConfirmation() {
   const [branding, setBranding] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showScheduleRejectionNotice, setShowScheduleRejectionNotice] = useState(false);
+  const [showScheduleEditModal, setShowScheduleEditModal] = useState(false);
+  const [scheduleEditDate, setScheduleEditDate] = useState('');
+  const [scheduleEditTime, setScheduleEditTime] = useState('');
+  const [scheduleUpdateError, setScheduleUpdateError] = useState('');
+  const [updatingSchedule, setUpdatingSchedule] = useState(false);
   const [showPaymentRejectionNotice, setShowPaymentRejectionNotice] = useState(false);
   const lastAnnouncedStatusRef = useRef(null);
   const lastScheduleNoticeRef = useRef(null);
@@ -420,6 +425,35 @@ export default function OrderConfirmation() {
     }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const openScheduleEditor = () => {
+    const value = String(order?.scheduledFor || '');
+    const date = value.slice(0, 10);
+    const time = value.includes('T') ? value.slice(11, 16) : '';
+    setScheduleEditDate(date);
+    setScheduleEditTime(time);
+    setScheduleUpdateError('');
+    setShowScheduleRejectionNotice(false);
+    setShowScheduleEditModal(true);
+  };
+
+  const submitScheduleUpdate = async () => {
+    if (!scheduleEditDate || !scheduleEditTime) {
+      setScheduleUpdateError('Choose both a new date and time.');
+      return;
+    }
+    setUpdatingSchedule(true);
+    setScheduleUpdateError('');
+    try {
+      const response = await updateOrderSchedule(orderNumber, `${scheduleEditDate}T${scheduleEditTime}`);
+      setOrder(response.data.data);
+      setShowScheduleEditModal(false);
+    } catch (error) {
+      setScheduleUpdateError(error.response?.data?.message || 'That date and time cannot be requested. Please choose another.');
+    } finally {
+      setUpdatingSchedule(false);
+    }
   };
 
   const handleFeedbackSubmit = async (e) => {
@@ -1026,10 +1060,19 @@ export default function OrderConfirmation() {
                 </div>
               )}
               <p className="mt-4 text-xs text-slate-500">Please contact the store to arrange another available date and time.</p>
+              {order.status !== 'cancelled' && order.paymentStatus !== 'rejected' && (
+                <button
+                  type="button"
+                  onClick={openScheduleEditor}
+                  className="mt-5 w-full rounded-2xl bg-primary-500 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-primary-500/20 transition hover:bg-primary-600 active:scale-[0.98]"
+                >
+                  Choose another date
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowScheduleRejectionNotice(false)}
-                className="mt-6 w-full rounded-2xl bg-slate-900 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800 active:scale-[0.98]"
+                className="mt-3 w-full rounded-2xl bg-slate-900 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800 active:scale-[0.98]"
               >
                 Okay, I understand
               </button>
@@ -1063,6 +1106,30 @@ export default function OrderConfirmation() {
               >
                 Okay, I understand
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showScheduleEditModal && (
+        <div className="fixed inset-0 z-[255] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="schedule-edit-title">
+          <div className="w-full max-w-sm rounded-[2rem] border border-primary-100 bg-white p-6 shadow-2xl animate-scale-in">
+            <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-primary-600">Update request</p>
+            <h3 id="schedule-edit-title" className="mt-2 text-center text-2xl font-black text-slate-900">Choose another date</h3>
+            <p className="mt-2 text-center text-sm leading-relaxed text-slate-500">The store will review your new requested date and time.</p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Date
+                <input type="date" min={new Date().toISOString().slice(0, 10)} value={scheduleEditDate} onChange={event => setScheduleEditDate(event.target.value)} className="input-field mt-1" />
+              </label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Time
+                <input type="time" value={scheduleEditTime} onChange={event => setScheduleEditTime(event.target.value)} className="input-field mt-1" />
+              </label>
+            </div>
+            {scheduleUpdateError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{scheduleUpdateError}</p>}
+            <div className="mt-6 flex gap-3">
+              <button type="button" onClick={() => setShowScheduleEditModal(false)} disabled={updatingSchedule} className="flex-1 rounded-2xl bg-slate-100 py-3.5 text-xs font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-200">Cancel</button>
+              <button type="button" onClick={submitScheduleUpdate} disabled={updatingSchedule} className="flex-1 rounded-2xl bg-primary-500 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-primary-500/20 transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60">{updatingSchedule ? 'Sending...' : 'Send new request'}</button>
             </div>
           </div>
         </div>

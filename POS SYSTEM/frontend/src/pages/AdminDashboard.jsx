@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
-import { getAdminSummary } from '../services/api';
+import { getAdminSummary, getAdminChatConversations } from '../services/api';
 import ProductsTab from '../components/admin/ProductsTab';
 import CategoriesTab from '../components/admin/CategoriesTab';
 import PromosTab from '../components/admin/PromosTab';
@@ -12,17 +12,18 @@ import SettingsTab from '../components/admin/SettingsTab';
 import StaffTab from '../components/admin/StaffTab';
 import AdminNotifications from '../components/admin/AdminNotifications';
 import UtangTracker from '../components/admin/UtangTracker';
+import ChatTab from '../components/admin/ChatTab';
 import { formatCurrency } from '../utils/helpers';
 import { applyTheme, clearTheme } from '../utils/theme';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
-import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles, WalletCards, Tag } from 'lucide-react';
+import { BarChart2, ShoppingBag, FolderTree, PackageSearch, Users, Package, Settings, LogOut, CircleDollarSign, ShoppingCart, Menu, X, Globe, Eye, LockKeyhole, Sparkles, WalletCards, Tag, MessageCircle } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 
 export default function AdminDashboard() {
   const { user, logoutUser, performLogout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const allowedTabs = ['overview', 'orders', 'utang', 'products', 'categories', 'promos', 'inventory', 'staff', 'settings'];
+  const allowedTabs = ['overview', 'orders', 'chat', 'utang', 'products', 'categories', 'promos', 'inventory', 'staff', 'settings'];
   const requestedTab = searchParams.get('tab') || 'overview';
   const activeTab = allowedTabs.includes(requestedTab) ? requestedTab : 'overview';
 
@@ -41,6 +42,7 @@ export default function AdminDashboard() {
   const featureLabels = {
     overview: 'Overview',
     orders: 'Orders',
+    chat: 'Customer Chat',
     utang: 'Utang Tracker',
     products: 'Products',
     categories: 'Categories',
@@ -89,6 +91,22 @@ export default function AdminDashboard() {
     }
   }, [user?.tenantId, connected]);
 
+  useEffect(() => {
+    const loadChatBadge = async () => {
+      try {
+        const response = await getAdminChatConversations();
+        const unread = (response.data.data || []).filter(conversation => conversation.unreadForAdmin).length;
+        setNotificationCounts(current => ({ ...current, chat: unread }));
+      } catch {
+        // Chat badge is non-critical to the dashboard.
+      }
+    };
+    loadChatBadge();
+    const timer = setInterval(loadChatBadge, 15000);
+    const unsubscribe = onEvent('chat_update', loadChatBadge);
+    return () => { clearInterval(timer); unsubscribe(); };
+  }, [onEvent]);
+
   const loadSummary = async (showLoader = true) => {
     if (showLoader) setLoading(true);
     try {
@@ -112,6 +130,7 @@ export default function AdminDashboard() {
       items: [
         { id: 'overview', label: 'Overview', icon: <BarChart2 className="w-5 h-5" /> },
         { id: 'orders', label: 'Orders', icon: <ShoppingBag className="w-5 h-5" /> },
+        { id: 'chat', label: 'Customer Chat', icon: <MessageCircle className="w-5 h-5" /> },
         { id: 'utang', label: 'Utang Tracker', icon: <WalletCards className="w-5 h-5" /> },
       ]
     },
@@ -291,7 +310,7 @@ export default function AdminDashboard() {
               <p className="text-sm font-bold text-surface-900">{user?.name}</p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-surface-500">{user?.role}</p>
             </div>
-            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} onUnreadCountsChange={setNotificationCounts} />
+            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} onUnreadCountsChange={counts => setNotificationCounts(current => ({ ...current, ...counts }))} />
             <button
               onClick={() => setShowLogoutConfirm(true)}
               aria-label="Log out"
@@ -399,6 +418,7 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'orders' && <OrdersTab />}
+          {activeTab === 'chat' && <ChatTab onUnreadCountChange={count => setNotificationCounts(current => ({ ...current, chat: count }))} />}
           {activeTab === 'utang' && <UtangTracker />}
           {activeTab === 'categories' && <CategoriesTab />}
           {activeTab === 'promos' && <PromosTab />}

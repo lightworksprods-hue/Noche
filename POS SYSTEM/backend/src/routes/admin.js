@@ -404,27 +404,14 @@ router.patch('/orders/:id/schedule', authenticate, authorize('admin'), async (re
       data: {
         scheduleStatus,
         scheduleNote: String(scheduleNote || '').trim() || null,
-        scheduleConfirmedAt: new Date()
+        scheduleConfirmedAt: new Date(),
+        ...(scheduleStatus === 'rejected' && order.paymentStatus === 'rejected' ? {
+          status: 'cancelled',
+          refundStatus: 'not_required'
+        } : {})
       },
       include: { items: true, payments: true }
     });
-
-    const paymentAmount = paymentStatus === 'paid' && finalizingDownpayment
-      ? Math.max(Number(order.total) - Number(order.paymentAmount || 0), 0)
-      : verifyingInitialPayment && paymentStatus !== 'rejected'
-        ? Number(order.paymentAmount || order.total || 0)
-        : 0;
-    if (paymentAmount > 0) {
-      await prisma.payment.create({
-        data: {
-          orderId,
-          amountDue: paymentAmount,
-          amountReceived: paymentAmount,
-          paymentMethod: paymentMethod || order.paymentMethod,
-          cashierId: req.user.id
-        }
-      });
-    }
     await prisma.auditLog.create({
       data: {
         tenantId: req.tenantId,
@@ -562,6 +549,7 @@ router.patch('/orders/:id/payment', authenticate, authorize('admin'), async (req
       where: { id: orderId },
       data: {
         paymentStatus,
+        ...(paymentStatus === 'rejected' ? { status: 'cancelled', refundStatus: 'not_required' } : {}),
         ...(verifyingInitialPayment && paymentStatus !== 'rejected' ? { status: 'booked', confirmedAt: new Date() } : {}),
         ...(verifyingInitialPayment && paymentStatus !== 'rejected' ? { paymentVerifiedAt: new Date() } : {}),
         ...(paymentStatus === 'paid' ? { fullyPaidAt: new Date() } : {}),

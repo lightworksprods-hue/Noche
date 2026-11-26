@@ -86,6 +86,13 @@ export const getCategories = () => api.get('/categories');
 export const createOrder = (data) => api.post('/orders', data);
 export const getOrder = (orderNumber) => api.get(`/orders/${orderNumber}`);
 export const cancelOrder = (orderNumber) => api.post(`/orders/${orderNumber}/cancel`);
+export const updateOrderSchedule = (orderNumber, scheduledFor) => api.patch(`/orders/${orderNumber}/schedule`, { scheduledFor });
+export const getChatConversation = (sessionId) => api.get('/chat/conversation', { params: { sessionId } });
+export const sendChatMessage = (data) => api.post('/chat/conversation/messages', data);
+export const getAdminChatConversations = () => api.get('/chat/admin/conversations');
+export const acceptAdminChatConversation = (conversationId) => api.patch(`/chat/admin/conversations/${conversationId}/accept`);
+export const sendAdminChatMessage = (conversationId, content) => api.post(`/chat/admin/conversations/${conversationId}/messages`, { content });
+export const markAdminChatRead = (conversationId) => api.patch(`/chat/admin/conversations/${conversationId}/read`);
 export const getOrderHistory = ({ page = 1, limit = 10 } = {}) => api.get('/orders/history', { params: { page, limit } });
 export const confirmDeliveryReceived = (orderNumber) => api.post(`/orders/${orderNumber}/received`);
 

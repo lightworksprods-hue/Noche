@@ -51,6 +51,7 @@ model Tenant {
   payrollPayments PayrollPayment[]
   addons        Addon[]
   debtPlans     DebtPlan[]
+  chatConversations ChatConversation[]
 }
 
 model User {
@@ -82,6 +83,8 @@ model User {
   recordedPayrollPayments PayrollPayment[] @relation("PayrollRecordedBy")
   packageBookings EventBooking[] @relation("CustomerPackageBookings")
   debtPayments DebtPayment[]
+  chatConversations ChatConversation[]
+  chatMessages ChatMessage[]
 
   @@unique([email, tenantId])
 }
@@ -375,6 +378,41 @@ model Notification {
   createdAt DateTime @default(now())
 
   order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model ChatConversation {
+  id              Int      @id @default(autoincrement())
+  tenantId        Int
+  customerId      Int?
+  sessionId       String
+  customerName    String?
+  customerEmail   String?
+  status          String   @default("bot") // bot, open, closed
+  unreadForAdmin  Boolean  @default(false)
+  unreadForCustomer Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer User?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@unique([tenantId, sessionId])
+  @@index([tenantId, status, updatedAt])
+}
+
+model ChatMessage {
+  id             Int      @id @default(autoincrement())
+  conversationId Int
+  senderType     String   // customer, bot, admin
+  senderId       Int?
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
 }
 
 model PushSubscription {

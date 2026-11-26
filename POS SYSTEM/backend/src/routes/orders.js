@@ -714,9 +714,67 @@ router.get('/:orderNumber', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized access to this order.' });
     }
 
+    // Repair older orders created before rejection automatically cancelled the
+    // order. A rejected payment means the order cannot proceed.
+    if (order.paymentStatus === 'rejected' && order.status !== 'cancelled') {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { status: 'cancelled', refundStatus: 'not_required' }
+      });
+      order.status = 'cancelled';
+    }
+
     res.json({ success: true, data: order });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to load order.' });
+  }
+});
+
+// PATCH /api/orders/:orderNumber/schedule — Customer resubmits a rejected date/time.
+router.patch('/:orderNumber/schedule', async (req, res) => {
+  try {
+    const tenantSlug = req.headers['x-tenant-slug'];
+    const { scheduledFor } = req.body;
+    const order = await prisma.order.findUnique({
+      where: { orderNumber: req.params.orderNumber },
+      include: { items: true, tenant: true }
+    });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    const resolvedSlug = tenantSlug || 'project-million';
+    if (order.tenant.slug !== resolvedSlug) return res.status(403).json({ success: false, message: 'Unauthorized access to this order.' });
+    if (order.status === 'cancelled' || order.paymentStatus === 'rejected') {
+      return res.status(400).json({ success: false, message: 'This cancelled order cannot update its requested date.' });
+    }
+    if (order.scheduleStatus !== 'rejected') {
+      return res.status(400).json({ success: false, message: 'Only a rejected schedule can be changed.' });
+    }
+
+    const requestedSchedule = new Date(scheduledFor || '');
+    if (!scheduledFor || Number.isNaN(requestedSchedule.getTime()) || requestedSchedule.getTime() < Date.now()) {
+      return res.status(400).json({ success: false, message: 'Choose a valid future date and time.' });
+    }
+
+    const products = await prisma.product.findMany({
+      where: { id: { in: order.items.map(item => item.productId) }, tenantId: order.tenantId },
+      select: { id: true, name: true, availabilitySchedule: true }
+    });
+    for (const item of order.items) {
+      const product = products.find(candidate => candidate.id === item.productId);
+      if (product && !productAllowsRequestedSchedule(product, scheduledFor)) {
+        return res.status(400).json({ success: false, message: `${product.name} is not available on the selected date and time.` });
+      }
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { scheduledFor: requestedSchedule, scheduleStatus: 'pending', scheduleNote: null, scheduleConfirmedAt: null },
+      include: { items: true, payments: true, tenant: true }
+    });
+    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updated, 'schedule_resubmitted');
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Customer schedule update error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update the requested schedule.' });
   }
 });
 

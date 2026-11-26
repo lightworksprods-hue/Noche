@@ -9,6 +9,7 @@ import { unlockAudio } from './utils/helpers';
 import GlobalNotification from './components/GlobalNotification';
 import SocketListener from './components/SocketListener';
 import GlobalThankYou from './components/GlobalThankYou';
+import CustomerChat from './components/CustomerChat';
 
 // Pages
 import Landing from './pages/Landing';
@@ -59,6 +60,7 @@ function App() {
             <GlobalNotification />
             <SocketListener />
             <GlobalThankYou />
+            <CustomerChat />
             <Routes>
 
 
