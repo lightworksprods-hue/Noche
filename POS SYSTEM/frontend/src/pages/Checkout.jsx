@@ -465,14 +465,37 @@ export default function Checkout() {
         <div className="glass-card p-5 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <label className="block text-sm font-semibold text-surface-700 mb-3">{t('orderType')}</label>
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {ORDER_TYPES.filter(type => !deliveryDisabled || type.id !== 'delivery').map(t => (
-                <button key={t.id} type="button" onClick={() => setOrderType(t.id)}
-                  className={`p-3 sm:p-4 rounded-xl border-2 text-center font-semibold transition-all ${orderType === t.id ? 'border-transparent text-white' : 'border-surface-200 hover:border-primary-300 text-surface-600'}`}
-                  style={orderType === t.id ? { backgroundColor: brandingColor, borderColor: brandingColor, color: '#ffffff' } : {}}>
+            {ORDER_TYPES.map(t => {
+              const isUnavailable = t.id === 'delivery' && deliveryDisabled;
+              const isSelected = orderType === t.id && !isUnavailable;
+
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => !isUnavailable && setOrderType(t.id)}
+                  disabled={isUnavailable}
+                  aria-disabled={isUnavailable}
+                  title={isUnavailable ? 'Delivery is currently unavailable' : undefined}
+                  className={`relative p-3 sm:p-4 rounded-xl border-2 text-center font-semibold transition-all ${
+                    isUnavailable
+                      ? 'border-surface-200 bg-surface-100 text-surface-400 cursor-not-allowed opacity-75'
+                      : isSelected
+                        ? 'border-transparent text-white'
+                        : 'border-surface-200 hover:border-primary-300 text-surface-600'
+                  }`}
+                  style={isSelected ? { backgroundColor: brandingColor, borderColor: brandingColor, color: '#ffffff' } : {}}
+                >
                   <div className="mb-1 flex justify-center">{t.icon}</div>
                   <span className="text-xs sm:text-sm">{t.label}</span>
+                  {isUnavailable && (
+                    <span className="block mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-surface-400">
+                      Not available
+                    </span>
+                  )}
                 </button>
-              ))}
+              );
+            })}
           </div>
 
           {orderType === 'delivery' && (
@@ -519,18 +542,18 @@ export default function Checkout() {
               <label className="text-sm font-bold text-surface-900">Payment Option</label>
               <span className="text-[10px] font-black uppercase tracking-widest text-surface-400">Choose one</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 { id: 'downpayment', label: '50% Downpayment' },
                 { id: 'full_payment', label: 'Pay in Full' },
                 { id: 'custom_payment', label: 'Custom Amount' }
               ].map(option => (
                 <button key={option.id} type="button" onClick={() => setPaymentMode(option.id)}
-                  className={`flex min-h-14 items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition-all ${paymentMode === option.id ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm' : 'border-surface-200 bg-white text-surface-600 hover:border-primary-300'}`}>
+                  className={`flex min-h-16 items-center justify-center gap-2 rounded-2xl border-2 px-3 py-3 text-center transition-all ${paymentMode === option.id ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm' : 'border-surface-200 bg-white text-surface-600 hover:border-primary-300'}`}>
                   <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${paymentMode === option.id ? 'border-primary-500' : 'border-surface-300'}`}>
                     {paymentMode === option.id && <span className="h-2.5 w-2.5 rounded-full bg-primary-500" />}
                   </span>
-                  <span className="block text-xs font-black uppercase tracking-wide">{option.label}</span>
+                  <span className="block text-[11px] sm:text-[10px] lg:text-xs font-black uppercase tracking-wide">{option.label}</span>
                 </button>
               ))}
             </div>
