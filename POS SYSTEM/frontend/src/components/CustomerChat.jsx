@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, Headset, Send, UserRound, X } from 'lucide-react';
-import { getChatConversation, getOrder, getOrderHistory, sendChatMessage } from '../services/api';
+import { getChatConversation, getOrder, getOrderHistory, markChatRead, sendChatMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const FAQS = [
@@ -103,6 +103,12 @@ export default function CustomerChat() {
     return () => clearInterval(timer);
   }, [open, sessionId]);
 
+  useEffect(() => {
+    if (!open || !conversation?.unreadForCustomer) return;
+    setConversation(current => current ? { ...current, unreadForCustomer: false } : current);
+    markChatRead(sessionId).catch(() => {});
+  }, [open, conversation?.unreadForCustomer, sessionId]);
+
   const send = async (content, escalate = false) => {
     const text = String(content || '').trim();
     if (!text || sending) return;
@@ -184,8 +190,9 @@ export default function CustomerChat() {
             {showWelcome && <div className="rounded-2xl rounded-tl-sm bg-white p-3 text-sm text-surface-700 shadow-sm">Hi! I’m Ms. Suki, the store assistant. I can help with orders, payments, schedules, and order updates.</div>}
             {messages.map(message => (
               <div key={message.id} className={`flex ${message.senderType === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                {message.senderType === 'admin' && <div className="mr-2 mt-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700"><UserRound className="h-4 w-4" aria-hidden="true" /></div>}
                 <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${message.senderType === 'customer' ? 'rounded-br-sm bg-primary-500 text-white' : 'rounded-bl-sm bg-white text-surface-700'}`}>
-                  {message.senderType === 'admin' && <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-primary-600">Admin reply</p>}
+                  {message.senderType === 'admin' && <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-primary-600">Admin</p>}
                   {message.content}
                 </div>
               </div>

@@ -88,6 +88,7 @@ export const getOrder = (orderNumber) => api.get(`/orders/${orderNumber}`);
 export const cancelOrder = (orderNumber) => api.post(`/orders/${orderNumber}/cancel`);
 export const updateOrderSchedule = (orderNumber, scheduledFor) => api.patch(`/orders/${orderNumber}/schedule`, { scheduledFor });
 export const getChatConversation = (sessionId) => api.get('/chat/conversation', { params: { sessionId } });
+  export const markChatRead = (sessionId) => api.patch('/chat/conversation/read', { sessionId });
 export const sendChatMessage = (data) => api.post('/chat/conversation/messages', data);
 export const getAdminChatConversations = () => api.get('/chat/admin/conversations');
 export const acceptAdminChatConversation = (conversationId) => api.patch(`/chat/admin/conversations/${conversationId}/accept`);

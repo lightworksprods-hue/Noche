@@ -87,6 +87,22 @@ router.post('/conversation/messages', async (req, res) => {
   }
 });
 
+router.patch('/conversation/read', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const sessionId = sessionValue(req.body.sessionId || req.query.sessionId);
+    if (!tenant || !sessionId) return res.status(400).json({ success: false, message: 'A valid chat session is required.' });
+    await prisma.chatConversation.updateMany({
+      where: { tenantId: tenant.id, sessionId },
+      data: { unreadForCustomer: false }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Customer chat read error:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark chat as read.' });
+  }
+});
+
 router.get('/admin/conversations', authenticate, authorize('admin'), async (req, res) => {
   try {
     const conversations = await prisma.chatConversation.findMany({
