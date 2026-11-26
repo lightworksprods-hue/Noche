@@ -31,7 +31,7 @@ const sendOTPEmail = async (email, otp, tenant = {}) => {
   if (tenant?.slug) verificationUrl.searchParams.set('tenant', tenant.slug);
   verificationUrl.hash = new URLSearchParams({ action: 'verify', email, otp: String(otp) }).toString();
 
-  let absoluteLogo = logo || 'https://hometownbrew.jasonanthonytrillo.workers.dev/logo.png';
+  let absoluteLogo = logo || 'https://noche.lightworksprods.workers.dev/logo.png';
   if (logo && logo.startsWith('/')) {
     absoluteLogo = `https://hometownbrew.jasonanthonytrillo.workers.dev${logo}`;
   }
@@ -174,7 +174,7 @@ const sendBookedOrderEmail = async (order, tenant = {}) => {
   if (!order?.customerEmail) return { skipped: true, reason: 'missing_customer_email' };
 
   const { name = "Mona's Pang Noche Buena", logo, primaryColor = '#ec4899' } = tenant;
-  let absoluteLogo = logo || 'https://hometownbrew.jasonanthonytrillo.workers.dev/logo.png';
+  let absoluteLogo = logo || 'https://noche.lightworksprods.workers.dev/logo.png';
   if (logo && logo.startsWith('/')) absoluteLogo = `https://hometownbrew.jasonanthonytrillo.workers.dev${logo}`;
 
   const orderType = order.orderType === 'delivery' ? 'Delivery' : ['take_out', 'pickup'].includes(order.orderType) ? 'Pick Up' : 'Dine In';
