@@ -345,6 +345,63 @@ router.get('/summary', authenticate, authorize('admin'), async (req, res) => {
       .sort() // Keys are YYYY-MM-DD, so simple sort works perfectly
       .map(dateKey => dailyMap[dateKey]);
 
+    // Sales are cash movements, not fulfillment status. A downpayment and a
+    // later balance payment must therefore be separate revenue entries.
+    const paymentWindowStart = new Date(monthAgo);
+    paymentWindowStart.setHours(0, 0, 0, 0);
+    const [orderPayments, bookingPayments, debtPayments, legacyPaidOrders] = await Promise.all([
+      prisma.payment.findMany({
+        where: { order: { tenantId: req.tenantId, status: { not: 'cancelled' } }, createdAt: { gte: paymentWindowStart } },
+        select: { amountReceived: true, createdAt: true, orderId: true }
+      }),
+      prisma.eventBookingPayment.findMany({
+        where: { booking: { tenantId: req.tenantId, status: { not: 'rejected' } }, verifiedAt: { gte: paymentWindowStart } },
+        select: { amount: true, verifiedAt: true }
+      }),
+      prisma.debtPayment.findMany({
+        where: { debtPlan: { tenantId: req.tenantId }, paidAt: { gte: paymentWindowStart } },
+        select: { amount: true, paidAt: true }
+      }),
+      prisma.order.findMany({
+        where: {
+          tenantId: req.tenantId,
+          status: { not: 'cancelled' },
+          paymentStatus: { in: ['paid', 'partially_paid'] },
+          createdAt: { gte: paymentWindowStart },
+          payments: { none: {} }
+        },
+        select: { id: true, total: true, paymentAmount: true, paymentStatus: true, paymentVerifiedAt: true, fullyPaidAt: true, updatedAt: true, createdAt: true }
+      })
+    ]);
+
+    const paymentSales = [
+      ...orderPayments.map(payment => ({ amount: Number(payment.amountReceived) || 0, date: payment.createdAt })),
+      ...bookingPayments.map(payment => ({ amount: Number(payment.amount) || 0, date: payment.verifiedAt })),
+      ...debtPayments.map(payment => ({ amount: Number(payment.amount) || 0, date: payment.paidAt })),
+      // Compatibility for payments verified before payment-history tracking existed.
+      ...legacyPaidOrders.map(order => ({
+        amount: order.paymentStatus === 'partially_paid' ? Number(order.paymentAmount || 0) : Number(order.total || 0),
+        date: order.paymentStatus === 'paid' ? (order.fullyPaidAt || order.paymentVerifiedAt || order.updatedAt || order.createdAt) : (order.paymentVerifiedAt || order.updatedAt || order.createdAt)
+      }))
+    ].filter(payment => payment.amount > 0);
+
+    const salesFor = (start, end = null) => paymentSales
+      .filter(payment => payment.date >= start && (!end || payment.date <= end))
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    const todaySales = salesFor(today);
+    const weekSales = salesFor(weekAgo);
+    const monthSales = salesFor(monthAgo);
+    const paymentDailyMap = {};
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      paymentDailyMap[d.toISOString().split('T')[0]] = { label: d.toLocaleDateString('default', { month: 'short', day: 'numeric' }), revenue: 0 };
+    }
+    paymentSales.forEach(payment => {
+      const key = new Date(payment.date).toISOString().split('T')[0];
+      if (paymentDailyMap[key]) paymentDailyMap[key].revenue += payment.amount;
+    });
+    const paymentDailySales = Object.keys(paymentDailyMap).sort().map(key => paymentDailyMap[key]);
+
     const categoryStart = new Date();
     categoryStart.setDate(categoryStart.getDate() - 30);
     categoryStart.setHours(0, 0, 0, 0);
@@ -397,27 +454,27 @@ router.get('/summary', authenticate, authorize('admin'), async (req, res) => {
       success: true,
       data: { 
         today: { 
-          sales: todayAgg._sum.total || 0, 
+          sales: todaySales,
           orders: todayAgg._count.id || 0,
           expenses: todayExp._sum.amount || 0,
-          profit: (todayAgg._sum.total || 0) - (todayExp._sum.amount || 0) - todayCogs
+          profit: todaySales - (todayExp._sum.amount || 0) - todayCogs
         }, 
         week: { 
-          sales: weekAgg._sum.total || 0, 
+          sales: weekSales,
           orders: weekAgg._count.id || 0,
           expenses: weekExp._sum.amount || 0,
-          profit: (weekAgg._sum.total || 0) - (weekExp._sum.amount || 0) - weekCogs
+          profit: weekSales - (weekExp._sum.amount || 0) - weekCogs
         }, 
         month: { 
-          sales: monthAgg._sum.total || 0, 
+          sales: monthSales,
           orders: monthAgg._count.id || 0,
           expenses: monthExp._sum.amount || 0,
-          profit: (monthAgg._sum.total || 0) - (monthExp._sum.amount || 0) - monthCogs
+          profit: monthSales - (monthExp._sum.amount || 0) - monthCogs
         }, 
         totalProducts, 
         lowStock,
-        dailySales,
-        revenue: todayAgg._sum.total || 0,
+        dailySales: paymentDailySales,
+        revenue: todaySales,
         totalExpenses: (todayExp._sum.amount || 0) + todayCogs,
         ordersCount: todayAgg._count.id || 0,
         productsCount: totalProducts,

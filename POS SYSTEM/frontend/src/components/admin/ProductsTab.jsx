@@ -210,7 +210,7 @@ export default function ProductsTab() {
       alert(`Product limit reached (${productLimit}). Please contact your administrator to increase the limit.`);
       return;
     }
-    setCurrentProduct({ name: '', description: '', price: '', costPrice: '', pointsCost: '', image: '', images: [], categoryId: '', stock: 0, unit: 'pcs', available: true, isCombo: false, tags: '', sizes: [] });
+    setCurrentProduct({ name: '', description: '', price: '', costPrice: '', pointsCost: '', image: '', images: [], categoryId: '', stock: 0, unit: 'pcs', available: true, availabilitySchedule: null, isCombo: false, tags: '', sizes: [] });
     setComboOptions([]);
     setProductRecipes([]);
     setIsEditing(true);
@@ -222,6 +222,10 @@ export default function ProductsTab() {
       // Add-ons are managed centrally from the Add-ons tab and inherited by
       // category; never overwrite them from the product form.
       const { addons: _productAddons, ...productData } = currentProduct;
+      if (productData.availabilitySchedule && (!productData.availabilitySchedule.dates?.length || productData.availabilitySchedule.dates.some(entry => !entry.date))) {
+        alert('Add at least one valid availability date, or turn off the schedule.');
+        return;
+      }
       const sizes = productData.sizes || [];
       const invalidVariant = sizes.find(size =>
         size?.available !== false &&
@@ -352,6 +356,10 @@ export default function ProductsTab() {
   };
 
   if (loading) return <div className="p-8 text-center text-surface-500">Loading products...</div>;
+
+  const schedule = Array.isArray(currentProduct?.availabilitySchedule?.dates)
+    ? currentProduct.availabilitySchedule
+    : { dates: [{ date: '', startTime: '09:00', endTime: '17:00' }] };
 
   return (
     <div className="">
@@ -563,6 +571,39 @@ export default function ProductsTab() {
                       />
                       <span className="text-sm font-bold text-surface-700">Available for Sale</span>
                     </label>
+                    <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(currentProduct.availabilitySchedule)}
+                          onChange={(e) => setCurrentProduct({
+                            ...currentProduct,
+                            availabilitySchedule: e.target.checked ? schedule : null
+                          })}
+                          className="h-5 w-5 cursor-pointer rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                        />
+                          <span>
+                          <span className="block text-sm font-bold text-surface-700">Set availability schedule</span>
+                          <span className="block text-xs font-medium text-surface-400">Optional: choose the exact dates and times this product is normally available.</span>
+                        </span>
+                      </label>
+                      {currentProduct.availabilitySchedule && (
+                        <div className="mt-4 space-y-4 border-t border-surface-100 pt-4">
+                          <div className="space-y-3">
+                            {schedule.dates.map((entry, index) => (
+                              <div key={index} className="grid grid-cols-[1.2fr_1fr_1fr_auto] items-end gap-2">
+                                <label className="text-xs font-bold text-surface-500">Date<input type="date" value={entry.date} onChange={e => { const dates = [...schedule.dates]; dates[index] = { ...entry, date: e.target.value }; setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates } }); }} className="input-field mt-1 w-full bg-white" /></label>
+                                <label className="text-xs font-bold text-surface-500">From<input type="time" value={entry.startTime} onChange={e => { const dates = [...schedule.dates]; dates[index] = { ...entry, startTime: e.target.value }; setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates } }); }} className="input-field mt-1 w-full bg-white" /></label>
+                                <label className="text-xs font-bold text-surface-500">Until<input type="time" value={entry.endTime} onChange={e => { const dates = [...schedule.dates]; dates[index] = { ...entry, endTime: e.target.value }; setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates } }); }} className="input-field mt-1 w-full bg-white" /></label>
+                                <button type="button" onClick={() => setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates: schedule.dates.filter((_, dateIndex) => dateIndex !== index) } })} className="mb-0.5 rounded-lg px-2 py-2 text-xs font-black text-red-500 hover:bg-red-50">Remove</button>
+                              </div>
+                            ))}
+                            <button type="button" onClick={() => setCurrentProduct({ ...currentProduct, availabilitySchedule: { dates: [...schedule.dates, { date: '', startTime: '09:00', endTime: '17:00' }] } })} className="rounded-lg bg-primary-50 px-3 py-2 text-xs font-black text-primary-700 hover:bg-primary-100">+ Add another date</button>
+                          </div>
+                          {schedule.dates.length === 0 && <p className="text-xs font-bold text-amber-600">Add at least one date before saving.</p>}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

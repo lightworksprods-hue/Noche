@@ -6,6 +6,20 @@ function generateOrderNumber() {
   return String(Math.floor(10000 + Math.random() * 90000)); // 5 digits
 }
 
+function productAllowsRequestedSchedule(product, scheduledFor) {
+  const dates = product.availabilitySchedule?.dates;
+  if (!dates?.length || !scheduledFor) return true;
+  const [date, time] = String(scheduledFor).split('T');
+  if (!date || !time) return false;
+  const currentMinutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+  return dates.some(entry => {
+    if (entry.date !== date) return false;
+    const start = Number(entry.startTime.slice(0, 2)) * 60 + Number(entry.startTime.slice(3, 5));
+    const end = Number(entry.endTime.slice(0, 2)) * 60 + Number(entry.endTime.slice(3, 5));
+    return start <= end ? currentMinutes >= start && currentMinutes <= end : currentMinutes >= start || currentMinutes <= end;
+  });
+}
+
 
 // GET /api/orders/history — Get logged-in customer's order history
 const { authenticate } = require('../middleware/auth');
@@ -136,6 +150,10 @@ router.post('/', async (req, res) => {
 
       if (!product) {
         return res.status(400).json({ success: false, message: `Product ID ${pid} not found.` });
+      }
+
+      if (!isCounterOrder && !productAllowsRequestedSchedule(product, scheduledFor)) {
+        return res.status(400).json({ success: false, message: `${product.name} is not available on the selected date and time. Please choose one of the available dates shown at checkout.` });
       }
 
       if (product.stock < item.quantity) {

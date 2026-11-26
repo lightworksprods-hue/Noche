@@ -107,11 +107,17 @@ export default function OrdersTab() {
       : '50% downpayment';
   const getPaymentSummary = (order) => {
     const reference = order.paymentMethod === 'qrph' && order.paymentReference
-      ? ` • Ref ${order.paymentReference}`
+      ? ` • QRPH REF#${order.paymentReference}`
       : '';
     return `${getPaymentPlanLabel(order)}${reference}`;
   };
-  const getBalance = (order) => Math.max(0, Number(order.total || 0) - getSubmittedPaymentAmount(order));
+  const getPaidAmount = (order) => {
+    const recordedPayments = (order.payments || []).reduce((sum, payment) => sum + Number(payment.amountReceived || 0), 0);
+    if (recordedPayments > 0) return recordedPayments;
+    if (order.paymentStatus === 'partially_paid') return getSubmittedPaymentAmount(order);
+    return order.paymentStatus === 'paid' ? Number(order.total || 0) : 0;
+  };
+  const getBalance = (order) => Math.max(0, Number(order.total || 0) - getPaidAmount(order));
   const toggleOrderDetails = (orderId) => {
     setExpandedOrderIds(current => {
       const next = new Set(current);
@@ -388,13 +394,14 @@ export default function OrdersTab() {
                   <td className="p-4">
                     <span className="text-xs font-medium text-surface-600 capitalize">{order.paymentMethod === 'qrph' ? 'QR Ph' : (order.paymentMethod || 'Cash')}</span>
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && (
-                      <div className={`mt-1 text-[10px] font-black uppercase ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-red-600'}`}>
+                      <div className={`mt-1 text-[10px] font-black uppercase ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : order.paymentStatus === 'partially_paid' ? 'text-blue-600' : 'text-red-600'}`}>
                         {order.paymentStatus === 'submitted'
                           ? `Verify • ${getPaymentSummary(order)}`
                           : order.paymentStatus === 'partially_paid'
-                            ? `${getPaymentPlanLabel(order)} paid • Balance ${formatCurrency(getBalance(order))}`
+                            ? `${getPaymentPlanLabel(order)} paid • Paid ${formatCurrency(getPaidAmount(order))} • Balance ${formatCurrency(getBalance(order))}`
                             : order.paymentStatus}
                         {order.paymentStatus === 'submitted' && <div className="mt-1 normal-case font-black text-amber-700">Amount submitted: {formatCurrency(getSubmittedPaymentAmount(order))}</div>}
+                        {order.paymentReference && order.paymentStatus !== 'submitted' && <div className="mt-1 normal-case font-black text-surface-600">QRPH REF#{order.paymentReference}</div>}
                         {order.paymentVerifiedAt && <div className="mt-1 normal-case font-semibold text-surface-500">{getPaymentPlanLabel(order)} verified: {formatDate(order.paymentVerifiedAt)}</div>}
                         {order.fullyPaidAt && <div className="normal-case font-semibold text-emerald-600">Fully paid: {formatDate(order.fullyPaidAt)}</div>}
                       </div>
@@ -547,13 +554,14 @@ export default function OrdersTab() {
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Payment review</p>
                 <p className="text-sm font-medium text-surface-600 capitalize">{order.paymentMethod === 'qrph' ? 'QR Ph' : (order.paymentMethod || 'Cash')}</p>
                 {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && (
-                  <p className={`text-[10px] font-black uppercase mt-1 ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  <p className={`text-[10px] font-black uppercase mt-1 ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : order.paymentStatus === 'partially_paid' ? 'text-blue-600' : 'text-red-600'}`}>
                     {order.paymentStatus === 'submitted'
                       ? getPaymentSummary(order)
                       : order.paymentStatus === 'partially_paid'
-                        ? `${getPaymentPlanLabel(order)} paid • Balance ${formatCurrency(getBalance(order))}`
+                        ? `${getPaymentPlanLabel(order)} paid • Paid ${formatCurrency(getPaidAmount(order))} • Balance ${formatCurrency(getBalance(order))}`
                         : order.paymentStatus}
                     {order.paymentStatus === 'submitted' && <span className="mt-1 block normal-case font-black text-amber-700">Amount submitted: {formatCurrency(getSubmittedPaymentAmount(order))}</span>}
+                    {order.paymentReference && order.paymentStatus !== 'submitted' && <span className="mt-1 block normal-case font-black text-surface-600">QRPH REF#{order.paymentReference}</span>}
                     {order.paymentVerifiedAt && <span className="mt-1 block normal-case font-semibold text-surface-500">{getPaymentPlanLabel(order)} verified: {formatDate(order.paymentVerifiedAt)}</span>}
                     {order.fullyPaidAt && <span className="block normal-case font-semibold text-emerald-600">Fully paid: {formatDate(order.fullyPaidAt)}</span>}
                   </p>

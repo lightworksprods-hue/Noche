@@ -807,6 +807,11 @@ export default function Menu() {
                           </div>
                         );
                       })()}
+                      {product.isPreOrder && (
+                        <div className="absolute left-2 top-2 z-10">
+                          <span className="rounded-full border border-blue-200 bg-blue-600/95 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-white shadow-md">Pre-order</span>
+                        </div>
+                      )}
                       {(!product.available || product.stock <= 0) && (
                         <div className="absolute inset-0 bg-surface-900/60 backdrop-blur-[2px] flex items-center justify-center">
                           <span className="bg-red-500 text-white font-black px-4 py-1.5 rounded-xl text-xs uppercase tracking-widest -rotate-12">Sold Out</span>
@@ -815,6 +820,7 @@ export default function Menu() {
                     </div>
                     <div className="p-3 md:p-5 flex flex-col flex-1 w-full bg-white overflow-hidden">
                       <h3 className="font-heading font-bold text-surface-900 text-[15px] md:text-xl mb-0.5 md:mb-1 line-clamp-2 md:line-clamp-1 leading-tight">{product.name}</h3>
+                      {product.isPreOrder && <span className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-blue-700">Available as pre-order</span>}
                       {product.stock > 0 && product.stock < 5 && (
                         <span className="inline-flex items-center gap-1 text-[10px] md:text-[11px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mb-1 animate-pulse uppercase tracking-wide">
                           🔥 Only {product.stock} left!
@@ -1060,6 +1066,7 @@ export default function Menu() {
               ) : (
                 <>
                   <p className="text-surface-500 text-xs sm:text-sm mb-5 sm:mb-6">{selectedProduct.description}</p>
+                  {selectedProduct.isPreOrder && <p className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">This product is outside its regular schedule and will be prepared as a pre-order.</p>}
                   <div className="flex items-center gap-4 mb-8 sm:mb-8">
                     <p className="font-heading text-2xl sm:text-3xl font-bold" style={{ color: brandingColor }}>
                       {formatCurrency((() => {

@@ -35,6 +35,7 @@ export default function AdminDashboard() {
   const [liveVisitors, setLiveVisitors] = useState(0);
   const [showDrawer, setShowDrawer] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [notificationCounts, setNotificationCounts] = useState({});
   const { joinRoom, leaveRoom, connected, onEvent } = useSocket();
   const featureLocks = summary?.branding?.adminFeatureLocks || {};
   const featureLabels = {
@@ -183,7 +184,7 @@ export default function AdminDashboard() {
                   <span className="text-lg leading-none">{item.icon}</span>
                   <span className="text-sm">{item.label}</span>
                   {featureLocks[item.id] && <LockKeyhole className="ml-auto h-3.5 w-3.5 text-amber-300" />}
-                  {item.badge > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">{item.badge > 99 ? '99+' : item.badge}</span>}
+                  {notificationCounts[item.id] > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">{notificationCounts[item.id] > 99 ? '99+' : notificationCounts[item.id]}</span>}
                 </button>
               ))}
             </div>
@@ -232,7 +233,7 @@ export default function AdminDashboard() {
                   <span className="text-lg leading-none">{item.icon}</span>
                   <span className="text-sm">{item.label}</span>
                   {featureLocks[item.id] && <LockKeyhole className="ml-auto h-3.5 w-3.5 text-amber-300" />}
-                  {item.badge > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">{item.badge > 99 ? '99+' : item.badge}</span>}
+                  {notificationCounts[item.id] > 0 && <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">{notificationCounts[item.id] > 99 ? '99+' : notificationCounts[item.id]}</span>}
                 </button>
               ))}
             </div>
@@ -290,7 +291,7 @@ export default function AdminDashboard() {
               <p className="text-sm font-bold text-surface-900">{user?.name}</p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-surface-500">{user?.role}</p>
             </div>
-            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} />
+            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} onUnreadCountsChange={setNotificationCounts} />
             <button
               onClick={() => setShowLogoutConfirm(true)}
               aria-label="Log out"

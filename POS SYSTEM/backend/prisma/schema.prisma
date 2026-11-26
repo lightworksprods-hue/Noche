@@ -114,6 +114,7 @@ model Product {
   stock       Int      @default(0)
   unit        String   @default("pcs")
   available   Boolean  @default(true)
+  availabilitySchedule Json? // Optional { dates: [{ date: "2026-12-05", startTime: "15:00", endTime: "23:59" }] }
   pointsCost  Int?
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
@@ -520,10 +521,26 @@ model EventBooking {
   tenant   Tenant      @relation(fields: [tenantId], references: [id])
   package  EventPackage @relation(fields: [packageId], references: [id])
   customer User        @relation("CustomerPackageBookings", fields: [customerId], references: [id])
+  payments EventBookingPayment[]
 
   @@index([tenantId, status])
   @@index([tenantId, eventDate, status])
   @@index([customerId, createdAt])
+}
+
+model EventBookingPayment {
+  id            Int      @id @default(autoincrement())
+  bookingId     Int
+  amount        Float
+  paymentMethod String
+  reference     String?
+  verifiedAt    DateTime @default(now())
+  verifiedBy    Int?
+
+  booking EventBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, verifiedAt])
+  @@index([verifiedAt])
 }
 
 model PromoCode {

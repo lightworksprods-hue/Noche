@@ -12,7 +12,7 @@ const formatTime = (value) => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-export default function AdminNotifications({ userId, activeTab, onNavigate, onPendingBookingCountChange }) {
+export default function AdminNotifications({ userId, activeTab, onNavigate, onPendingBookingCountChange, onUnreadCountsChange }) {
   const [notifications, setNotifications] = useState([]);
   const [readIds, setReadIds] = useState(() => {
     try {
@@ -82,6 +82,17 @@ export default function AdminNotifications({ userId, activeTab, onNavigate, onPe
     () => notifications.filter(notification => !readIds.includes(notification.id)).length,
     [notifications, readIds]
   );
+
+  useEffect(() => {
+    const counts = notifications.reduce((result, notification) => {
+      if (readIds.includes(notification.id)) return result;
+      // Package bookings are handled from the Orders area in the sidebar.
+      const tab = notification.tab === 'bookings' ? 'orders' : notification.tab;
+      result[tab] = (result[tab] || 0) + 1;
+      return result;
+    }, {});
+    onUnreadCountsChange?.(counts);
+  }, [notifications, readIds, onUnreadCountsChange]);
 
   const handleNotificationClick = (notification) => {
     setReadIds(current => current.includes(notification.id) ? current : [...current, notification.id]);

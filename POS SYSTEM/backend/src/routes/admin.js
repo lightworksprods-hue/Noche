@@ -3,6 +3,16 @@ const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
+
+function normalizeAvailabilitySchedule(value) {
+  if (!value || typeof value !== 'object') return null;
+  const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const dates = Array.isArray(value.dates)
+    ? value.dates.map(entry => ({ date: String(entry?.date || ''), startTime: String(entry?.startTime || ''), endTime: String(entry?.endTime || '') }))
+      .filter(entry => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && timePattern.test(entry.startTime) && timePattern.test(entry.endTime))
+    : [];
+  return dates.length ? { dates } : null;
+}
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -398,6 +408,23 @@ router.patch('/orders/:id/schedule', authenticate, authorize('admin'), async (re
       },
       include: { items: true, payments: true }
     });
+
+    const paymentAmount = paymentStatus === 'paid' && finalizingDownpayment
+      ? Math.max(Number(order.total) - Number(order.paymentAmount || 0), 0)
+      : verifyingInitialPayment && paymentStatus !== 'rejected'
+        ? Number(order.paymentAmount || order.total || 0)
+        : 0;
+    if (paymentAmount > 0) {
+      await prisma.payment.create({
+        data: {
+          orderId,
+          amountDue: paymentAmount,
+          amountReceived: paymentAmount,
+          paymentMethod: paymentMethod || order.paymentMethod,
+          cashierId: req.user.id
+        }
+      });
+    }
     await prisma.auditLog.create({
       data: {
         tenantId: req.tenantId,
@@ -581,7 +608,7 @@ router.get('/products', authenticate, authorize('admin'), async (req, res) => {
 
 router.post('/products', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, description, price, costPrice, image, images, categoryId, stock, unit, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
+    const { name, description, price, costPrice, image, images, categoryId, stock, unit, available, availabilitySchedule, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
     if (!name || !price || !categoryId) {
       return res.status(400).json({ success: false, message: 'Name, price, and category are required.' });
     }
@@ -608,6 +635,7 @@ router.post('/products', authenticate, authorize('admin'), async (req, res) => {
         costPrice: costPrice ? parseFloat(costPrice) : 0,
         categoryId: parseInt(categoryId), stock: parseInt(stock) || 100, unit: unit || 'pcs',
         available: available !== false,
+        availabilitySchedule: normalizeAvailabilitySchedule(availabilitySchedule),
         pointsCost: pointsCost ? parseInt(pointsCost) : null,
         isCombo: isCombo || false,
         comboGroup1Name: comboGroup1Name || null,
@@ -639,7 +667,7 @@ router.post('/products', authenticate, authorize('admin'), async (req, res) => {
 
 router.put('/products/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, description, price, costPrice, image, images, categoryId, stock, unit, available, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
+    const { name, description, price, costPrice, image, images, categoryId, stock, unit, available, availabilitySchedule, pointsCost, addons, isCombo, comboGroup1Name, comboGroup2Name, tags, sizes } = req.body;
 
     // Handle addons: Delete old ones and create new ones (sync)
     if (addons) {
@@ -661,6 +689,7 @@ router.put('/products/:id', authenticate, authorize('admin'), async (req, res) =
         stock: stock !== undefined ? parseInt(stock) : undefined,
         unit: unit !== undefined ? String(unit).trim() || 'pcs' : undefined,
         available,
+        availabilitySchedule: availabilitySchedule === undefined ? undefined : normalizeAvailabilitySchedule(availabilitySchedule),
         pointsCost: pointsCost !== undefined ? (pointsCost ? parseInt(pointsCost) : null) : undefined,
         isCombo: isCombo !== undefined ? isCombo : undefined,
         comboGroup1Name: comboGroup1Name !== undefined ? comboGroup1Name : undefined,
@@ -1612,6 +1641,23 @@ router.patch('/bookings/:id/payment-status', authenticate, authorize('admin'), a
       },
       include: { package: { select: { name: true } } }
     });
+    const packageAmount = Number(String(booking.package.priceText || '').replace(/[^0-9.]/g, ''));
+    const bookingPaymentAmount = paymentStatus === 'paid'
+      ? Math.max(packageAmount - Number(booking.paymentAmount || 0), 0)
+      : paymentStatus === 'verified'
+        ? Number(booking.paymentAmount || 0)
+        : 0;
+    if (bookingPaymentAmount > 0) {
+      await prisma.eventBookingPayment.create({
+        data: {
+          bookingId: booking.id,
+          amount: bookingPaymentAmount,
+          paymentMethod: booking.paymentMethod || 'cash',
+          reference: booking.paymentReference || null,
+          verifiedBy: req.user.id
+        }
+      });
+    }
     await prisma.auditLog.create({
       data: { tenantId: req.tenantId, userId: req.user.id, action: `${paymentStatus}_package_payment`, entityType: 'package_booking', entityId: String(booking.id), details: `${paymentStatus === 'paid' ? 'Marked fully paid' : paymentStatus === 'verified' ? 'Verified' : 'Rejected'} payment for ${booking.package.name}` }
     });
@@ -1644,6 +1690,15 @@ router.patch('/bookings/:id/status', authenticate, authorize('admin'), async (re
       data: { status, paymentStatus: status === 'accepted' && booking.paymentMethod === 'cash' ? 'verified' : booking.paymentStatus, adminNotes: adminNotes?.trim() || null, reviewedAt: new Date() },
       include: { package: { select: { name: true } } }
     });
+
+    if (status === 'accepted' && booking.paymentMethod === 'cash' && updated.paymentStatus === 'verified' && Number(booking.paymentAmount || 0) > 0) {
+      const existingCashPayment = await prisma.eventBookingPayment.findFirst({ where: { bookingId: booking.id } });
+      if (!existingCashPayment) {
+        await prisma.eventBookingPayment.create({
+          data: { bookingId: booking.id, amount: Number(booking.paymentAmount), paymentMethod: 'cash', verifiedBy: req.user.id }
+        });
+      }
+    }
 
     await prisma.auditLog.create({
       data: {

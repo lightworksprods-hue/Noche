@@ -10,6 +10,32 @@ import LocationPicker from '../components/LocationPicker';
 import { useSocket } from '../context/SocketContext';
 import useStoreOperationRealtime from '../hooks/useStoreOperationRealtime';
 
+const isProductAvailableOnDate = (product, date, time) => {
+  const dates = product?.availabilitySchedule?.dates;
+  if (!dates?.length || !date || !time) return true;
+  const currentMinutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+  return dates.some(entry => {
+    if (entry.date !== date) return false;
+    const start = Number(entry.startTime.slice(0, 2)) * 60 + Number(entry.startTime.slice(3));
+    const end = Number(entry.endTime.slice(0, 2)) * 60 + Number(entry.endTime.slice(3));
+    return start <= end ? currentMinutes >= start && currentMinutes <= end : currentMinutes >= start || currentMinutes <= end;
+  });
+};
+
+const getCommonScheduleSlots = (items) => {
+  const scheduledProducts = items.filter(item => item?.availabilitySchedule?.dates?.length);
+  if (!scheduledProducts.length) return null;
+  return scheduledProducts[0].availabilitySchedule.dates.map(entry => {
+    const matchingEntries = scheduledProducts.map(product => product.availabilitySchedule.dates.find(candidate => candidate.date === entry.date));
+    if (matchingEntries.some(candidate => !candidate)) return null;
+    const startMinutes = Math.max(...matchingEntries.map(candidate => Number(candidate.startTime.slice(0, 2)) * 60 + Number(candidate.startTime.slice(3))));
+    const endMinutes = Math.min(...matchingEntries.map(candidate => Number(candidate.endTime.slice(0, 2)) * 60 + Number(candidate.endTime.slice(3))));
+    if (startMinutes > endMinutes) return null;
+    const formatTime = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return { date: entry.date, startTime: formatTime(startMinutes), endTime: formatTime(endMinutes) };
+  }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
+};
+
 const TRANSLATIONS = {
   en: {
     checkout: "Checkout",
@@ -208,6 +234,18 @@ export default function Checkout() {
     : paymentMode === 'custom_payment'
       ? roundMoney(Number(customPaymentAmount) || 0)
       : roundMoney(total * 0.5);
+  const commonScheduleSlots = getCommonScheduleSlots(items);
+  const selectedSchedule = commonScheduleSlots?.find(slot => slot.date === scheduledDate);
+
+  useEffect(() => {
+    if (!commonScheduleSlots?.length) return;
+    const firstSlot = commonScheduleSlots[0];
+    if (!selectedSchedule) setScheduledDate(firstSlot.date);
+    if (!scheduledTime || (selectedSchedule && (scheduledTime < selectedSchedule.startTime || scheduledTime > selectedSchedule.endTime))) {
+      setScheduledTime(selectedSchedule?.startTime || firstSlot.startTime);
+    }
+  }, [commonScheduleSlots, selectedSchedule, scheduledTime]);
+
   const qrCode = branding?.gcashQr || branding?.mayaQr;
 
   const handleApplyPromo = async () => {
@@ -302,8 +340,8 @@ export default function Checkout() {
       return;
     }
     const scheduledFor = scheduledDate && scheduledTime ? `${scheduledDate}T${scheduledTime}` : '';
-    if (!scheduledFor || new Date(scheduledFor).getTime() < Date.now()) {
-      setError('Please choose a future date and time for your order.');
+    if (!scheduledFor || new Date(scheduledFor).getTime() < Date.now() || commonScheduleSlots?.length === 0 || selectedSchedule && (scheduledTime < selectedSchedule.startTime || scheduledTime > selectedSchedule.endTime)) {
+      setError(commonScheduleSlots?.length === 0 ? 'The selected products have no common available date. Please place separate orders.' : 'Please choose an available future date and time for all products in your order.');
       return;
     }
 
@@ -527,13 +565,27 @@ export default function Checkout() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="scheduled-date" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-surface-400">Date</label>
-              <input id="scheduled-date" type="date" value={scheduledDate} min={new Date().toISOString().slice(0, 10)} onChange={e => setScheduledDate(e.target.value)} className="input-field" required />
+              {commonScheduleSlots ? (
+                <select id="scheduled-date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="input-field" required disabled={commonScheduleSlots.length === 0}>
+                  {commonScheduleSlots.length === 0 ? <option value="">No common dates</option> : commonScheduleSlots.map(slot => <option key={slot.date} value={slot.date}>{new Date(`${slot.date}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</option>)}
+                </select>
+              ) : (
+                <input id="scheduled-date" type="date" value={scheduledDate} min={new Date().toISOString().slice(0, 10)} onChange={e => setScheduledDate(e.target.value)} className="input-field" required />
+              )}
             </div>
             <div>
               <label htmlFor="scheduled-time" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-surface-400">Time</label>
-              <input id="scheduled-time" type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)} className="input-field" required />
+              <input id="scheduled-time" type="time" value={scheduledTime} min={selectedSchedule?.startTime} max={selectedSchedule?.endTime} onChange={e => setScheduledTime(e.target.value)} className="input-field" required disabled={commonScheduleSlots?.length === 0} />
             </div>
           </div>
+          {selectedSchedule && <p className="mt-2 text-[11px] font-bold text-surface-500">Available time: {selectedSchedule.startTime}–{selectedSchedule.endTime}</p>}
+          {commonScheduleSlots && commonScheduleSlots.length === 0 && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">These products do not share a common availability date. Please remove one product or place a separate order.</p>}
+          {commonScheduleSlots && commonScheduleSlots.length > 0 && <p className="mt-3 text-xs font-bold text-blue-700">This order can be scheduled only on the common available dates and times shown above.</p>}
+          {preOrderItems.length > 0 && (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
+              {preOrderItems.map(item => item.name).join(', ')} will be handled as a pre-order for your selected date. You can still order it.
+            </div>
+          )}
         </div>
 
         {!isFullRedemption && (

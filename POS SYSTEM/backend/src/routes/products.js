@@ -2,6 +2,21 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 
+function isProductScheduledNow(product, now = new Date()) {
+  const schedule = product.availabilitySchedule;
+  if (!schedule?.dates?.length) return true;
+  const timeZoneParts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23' }).formatToParts(now);
+  const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const currentMinutes = Number(timeZoneParts.find(part => part.type === 'hour')?.value) * 60 + Number(timeZoneParts.find(part => part.type === 'minute')?.value);
+  const toMinutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+  return schedule.dates.some(entry => {
+    if (entry.date !== dateKey) return false;
+    const start = toMinutes(entry.startTime);
+    const end = toMinutes(entry.endTime);
+    return start <= end ? currentMinutes >= start && currentMinutes <= end : currentMinutes >= start || currentMinutes <= end;
+  });
+}
+
 // GET /api/products/tenant/:slug
 router.get('/tenant/:slug', async (req, res) => {
   try {
@@ -71,6 +86,10 @@ router.get('/', async (req, res) => {
 
     // Post-process out-of-stock addons based on linked ingredients
     categories.forEach(category => {
+      category.products = category.products.map(product => ({
+        ...product,
+        isPreOrder: !isProductScheduledNow(product)
+      }));
       category.products?.forEach(product => {
         if (product.addons) {
           product.addons.forEach(addon => {
