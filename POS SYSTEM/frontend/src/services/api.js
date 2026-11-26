@@ -113,7 +113,7 @@ export const markServed = (id) => api.post(`/kitchen/orders/${id}/served`);
 
 // Admin
 export const getAdminOrders = (status, page, search = '') => {
-  let url = `/admin/orders?status=${status || 'all'}&page=${page || 1}&limit=10`;
+  let url = `/admin/orders?status=${status || 'pending'}&page=${page || 1}&limit=5`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
   return api.get(url);
 };

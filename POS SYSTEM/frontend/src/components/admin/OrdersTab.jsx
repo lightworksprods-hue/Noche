@@ -1,18 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { getAdminOrders, hardDeleteOrder, updateAdminOrderStatus, updateAdminOrderPayment, updateAdminOrderRefund, updateAdminOrderSchedule } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import { AlertTriangle, CheckCircle, CircleAlert, MoreVertical, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, CircleAlert, ChevronDown, MoreVertical, Trash2, XCircle } from 'lucide-react';
 import PaginationControls from './PaginationControls';
 import { useSocket } from '../../context/SocketContext';
 
 export default function OrdersTab() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('all');
+  const [status, setStatus] = useState('pending');
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [expandedOrderIds, setExpandedOrderIds] = useState(new Set());
   const menuRef = useRef(null);
   const { onEvent } = useSocket();
 
@@ -55,6 +56,7 @@ export default function OrdersTab() {
     try {
       const res = await getAdminOrders(status, page, searchQuery);
       setOrders(res.data.data);
+      setExpandedOrderIds(new Set());
       setPagination({ total: res.data.total || 0, totalPages: Math.ceil((res.data.total || 0) / (res.data.limit || 50)) || 1 });
     } catch (error) {
       console.error(error);
@@ -79,6 +81,20 @@ export default function OrdersTab() {
   const [confirmCancel, setConfirmCancel] = useState(null);
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
+  const cancelModalRef = useRef(null);
+
+  useEffect(() => {
+    if (!confirmCancel) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    requestAnimationFrame(() => {
+      cancelModalRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      cancelModalRef.current?.focus();
+    });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [confirmCancel]);
 
   const isFullPaymentOrder = (order) => order.paymentMode === 'full_payment' || (order.paymentMode === 'custom_payment' && Number(order.paymentAmount || 0) >= Number(order.total || 0));
   const getSubmittedPaymentAmount = (order) => isFullPaymentOrder(order)
@@ -96,6 +112,14 @@ export default function OrdersTab() {
     return `${getPaymentPlanLabel(order)}${reference}`;
   };
   const getBalance = (order) => Math.max(0, Number(order.total || 0) - getSubmittedPaymentAmount(order));
+  const toggleOrderDetails = (orderId) => {
+    setExpandedOrderIds(current => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
 
   const handleHardDelete = async () => {
     if (!confirmDelete) return;
@@ -216,28 +240,28 @@ export default function OrdersTab() {
 
       {confirmCancel && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in"
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-surface-950/55 p-2 backdrop-blur-sm animate-fade-in sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-order-title"
         >
-          <div className="my-0 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[2rem] border border-primary-100 bg-white shadow-2xl animate-scale-in sm:my-0">
-            <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-6 pb-7 pt-6 text-white">
-              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25">
-                <XCircle className="h-7 w-7" />
+          <div ref={cancelModalRef} tabIndex="-1" className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-[1.5rem] border border-primary-100 bg-white shadow-2xl outline-none animate-scale-in sm:max-h-[calc(100dvh-2rem)] sm:rounded-[2rem]">
+            <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-5 pb-5 pt-4 text-white sm:px-6 sm:pb-7 sm:pt-6">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 sm:mb-5 sm:h-14 sm:w-14">
+                <XCircle className="h-6 w-6 sm:h-7 sm:w-7" />
               </div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">Order action</p>
-              <h3 id="cancel-order-title" className="mt-1 font-heading text-2xl font-black">Cancel this order?</h3>
+              <h3 id="cancel-order-title" className="mt-1 font-heading text-xl font-black sm:text-2xl">Cancel this order?</h3>
             </div>
-            <div className="p-6">
+            <div className="p-5 sm:p-6">
               <p className="leading-relaxed text-surface-600">
                 Are you sure you want to cancel <span className="font-black text-surface-900">Order #{confirmCancel.orderNumber}</span>?
               </p>
-              <p className="mt-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm font-medium text-primary-800">
+              <p className="mt-2 rounded-xl border border-primary-100 bg-primary-50 px-3 py-2.5 text-sm font-medium text-primary-800 sm:mt-3 sm:px-4 sm:py-3">
                 The order will move to the cancelled list and its refund status will require an admin decision.
               </p>
             </div>
-            <div className="flex gap-3 border-t border-surface-100 bg-surface-50 p-6">
+            <div className="flex gap-3 border-t border-surface-100 bg-surface-50 p-4 sm:p-6">
               <button
                 type="button"
                 onClick={() => setConfirmCancel(null)}
@@ -307,7 +331,7 @@ export default function OrdersTab() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {['all', 'booked', 'ready', 'completed', 'cancelled'].map(s => (
+            {['pending', 'booked', 'ready', 'completed', 'cancelled'].map(s => (
               <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={`flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${status === s ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20' : 'bg-white text-surface-500 border border-surface-200 hover:bg-surface-50'}`}>
                 {s}
               </button>
@@ -467,17 +491,25 @@ export default function OrdersTab() {
       <div className="lg:hidden space-y-3">
         {orders.map(order => (
           <article key={order.id} className="relative bg-white rounded-3xl border border-surface-200 p-4 sm:p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3 mb-4">
+            <button
+              type="button"
+              onClick={() => toggleOrderDetails(order.id)}
+              aria-expanded={expandedOrderIds.has(order.id)}
+              className="mb-0 flex w-full items-start justify-between gap-3 text-left"
+            >
               <div>
                 <p className="font-mono text-sm font-black text-surface-900">#{order.orderNumber}</p>
                 <p className="text-xs text-surface-500 mt-1">{formatDate(order.createdAt)}</p>
               </div>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${getStatusColor(order.status)}`}>
-                {order.status}
-              </span>
-            </div>
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${getStatusColor(order.status)}`}>
+                  {order.status}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-surface-400 transition-transform ${expandedOrderIds.has(order.id) ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4 border-t border-surface-100 pt-4">
+            {expandedOrderIds.has(order.id) && <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-surface-100 pt-4">
               <div className="col-span-2 min-w-0 rounded-2xl bg-surface-50 p-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Customer & order type</p>
                 <p className="font-bold text-surface-900 truncate">{order.customerName || 'Guest'}</p>
@@ -601,7 +633,7 @@ export default function OrdersTab() {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
           </article>
         ))}
         {orders.length === 0 && (
