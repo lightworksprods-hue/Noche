@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronDown, MessageCircle, Send, UserRound, X } from 'lucide-react';
+import { ChevronDown, Headset, Send, UserRound, X } from 'lucide-react';
 import { getChatConversation, getOrder, sendChatMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -118,10 +118,10 @@ export default function CustomerChat() {
   const hasAdminReply = messages.some(message => message.senderType === 'admin');
   const showWelcome = !messages.length && !loading;
 
-  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
+  if (location.pathname === '/' || location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-[180] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-8 right-5 z-[180] flex flex-col items-end gap-3 sm:bottom-8 sm:right-6">
       {open && (
         <div className="flex h-[min(650px,calc(100dvh-7rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[2rem] border border-surface-200 bg-white shadow-2xl animate-scale-in">
           <div className="flex items-center justify-between bg-gradient-to-br from-primary-600 to-primary-800 px-5 py-4 text-white">
@@ -158,8 +158,8 @@ export default function CustomerChat() {
           </div>
         </div>
       )}
-      <button type="button" onClick={() => setOpen(value => !value)} className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-xl shadow-primary-500/30 transition hover:scale-105 hover:bg-primary-600" aria-label="Open support chat">
-        {open ? <ChevronDown className="h-6 w-6" /> : <img src="/ms.suki.png" alt="Open Ms. Suki chat" className="h-14 w-14 rounded-full object-cover" />}
+      <button type="button" onClick={() => setOpen(value => !value)} className={`relative flex h-14 w-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-xl shadow-primary-500/30 transition hover:scale-105 hover:bg-primary-600 ${!open ? 'support-attention' : ''}`} aria-label="Open support chat">
+        {open ? <ChevronDown className="h-6 w-6" /> : <Headset className="h-7 w-7" strokeWidth={2.25} aria-hidden="true" />}
         {conversation?.unreadForCustomer && !open && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black ring-2 ring-white">!</span>}
       </button>
     </div>

@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes support-attention {
+  0%, 68%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  72% {
+    transform: translate3d(0, -5px, 0) rotate(-4deg);
+  }
+
+  76% {
+    transform: translate3d(0, 0, 0) rotate(3deg);
+  }
+
+  80% {
+    transform: translate3d(0, -3px, 0) rotate(-2deg);
+  }
+
+  84% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+}
+
+.support-attention {
+  animation: support-attention 8s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .support-attention {
+    animation: none;
+  }
+}
+
 /* Leaflet Z-index fixes */
 .leaflet-container {
   z-index: 1 !important;
