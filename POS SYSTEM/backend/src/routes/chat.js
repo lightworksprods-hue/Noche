@@ -12,6 +12,12 @@ function sessionValue(value) {
   return String(value || '').trim().slice(0, 120);
 }
 
+function isAdminSupportAvailable() {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+  return minutes >= 480 && minutes < 1200;
+}
+
 const conversationInclude = {
   messages: { orderBy: { createdAt: 'asc' } },
   customer: { select: { id: true, name: true, email: true } }
@@ -46,6 +52,9 @@ router.post('/conversation/messages', async (req, res) => {
     });
     if (existingConversation?.status === 'requested' && !req.body.escalate) {
       return res.status(409).json({ success: false, message: 'Please wait for an admin to accept the chat request.' });
+    }
+    if (req.body.escalate && !isAdminSupportAvailable()) {
+      return res.status(409).json({ success: false, message: 'Admin support is available from 8:00 AM to 8:00 PM.' });
     }
     const shouldEscalate = Boolean(req.body.escalate) && existingConversation?.status !== 'open';
 

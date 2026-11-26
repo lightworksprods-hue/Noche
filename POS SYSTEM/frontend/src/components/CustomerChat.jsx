@@ -24,6 +24,12 @@ const orderStatusLabel = status => ({
   cancelled: 'Order cancelled'
 }[status] || 'Order status is being updated');
 
+const isAdminSupportAvailable = () => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+  return minutes >= 480 && minutes < 1200;
+};
+
 const getBotReply = message => {
   const text = String(message || '').toLowerCase();
   const isGreeting = /\b(hi|hello|hey|kamusta|kumusta)\b/.test(text);
@@ -33,7 +39,7 @@ const getBotReply = message => {
   if (text.includes('thank')) return 'You’re welcome! I’m here if you need anything else.';
   if (text.includes('payment') || text.includes('pay')) return 'You can pay by Cash or QR Ph. A 50% downpayment option is also available for eligible orders.';
   if (text.includes('schedule') || text.includes('date')) return 'I can help check your order schedule. Choose “Any updates on my order?” to select an active order.';
-  if (text.includes('admin') || text.includes('human')) return 'You can tap “Talk to an admin” below to request help from the store team.';
+  if (text.includes('admin') || text.includes('human')) return isAdminSupportAvailable() ? 'You can tap “Talk to an admin” below to request help from the store team.' : 'Admin support is available from 8:00 AM to 8:00 PM. I can still help with store and order questions right now.';
   return 'I’m Ms. Suki, the store assistant. I can help with orders, payments, schedules, and order updates. Please choose an option below or tap “Talk to an admin.”';
 };
 
@@ -67,6 +73,12 @@ export default function CustomerChat() {
   const [showOrderPicker, setShowOrderPicker] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [chatTenantId, setChatTenantId] = useState(null);
+  const [adminSupportAvailable, setAdminSupportAvailable] = useState(isAdminSupportAvailable);
+
+  useEffect(() => {
+    const timer = setInterval(() => setAdminSupportAvailable(isAdminSupportAvailable()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -176,7 +188,8 @@ export default function CustomerChat() {
       setInput('');
 
       const isFaqQuestion = FAQS.some(faq => faq.question.toLowerCase() === text.toLowerCase());
-      if (!escalate && data.status === 'bot' && isOrderStatusRequest(text)) {
+      const isBotConversation = data.status === 'bot' || data.status === 'closed';
+      if (!escalate && isBotConversation && isOrderStatusRequest(text)) {
         setShowOrderPicker(true);
         await loadActiveOrders();
         setMessages(current => [...current, {
@@ -186,7 +199,7 @@ export default function CustomerChat() {
         }]);
         return;
       }
-      if (!escalate && data.status === 'bot' && !isFaqQuestion) {
+      if (!escalate && isBotConversation && !isFaqQuestion) {
         setMessages(current => [...current, {
           id: `bot-${Date.now()}`,
           senderType: 'bot',
@@ -267,7 +280,7 @@ export default function CustomerChat() {
             {conversation?.status === 'open' && <div className="rounded-2xl rounded-tl-sm border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">You are talking with an admin now.</div>}
           </div>
           <div className="border-t border-surface-200 bg-white p-3">
-            {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button>}
+            {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && (adminSupportAvailable ? <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button> : <div className="mb-2 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-center text-[11px] font-bold text-surface-500">Admin support is available from 8:00 AM to 8:00 PM.</div>)}
             <form onSubmit={event => { event.preventDefault(); send(input, false); }} className="flex items-center gap-2">
               <input value={input} onChange={event => setInput(event.target.value)} disabled={conversation?.status === 'requested' || showOrderPicker} placeholder={conversation?.status === 'requested' ? 'Waiting for admin acceptance...' : showOrderPicker ? 'Choose an active order above...' : conversation?.status === 'open' ? 'Message the admin...' : 'Ask a question...'} className="min-w-0 flex-1 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-sm outline-none focus:border-primary-400 disabled:cursor-not-allowed disabled:opacity-60" />
               <button type="submit" disabled={!input.trim() || sending || conversation?.status === 'requested'} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Send message"><Send className="h-4 w-4" /></button>
