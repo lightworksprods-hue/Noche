@@ -157,7 +157,6 @@ export default function CustomerChat() {
     ]);
   };
 
-  const hasAdminReply = messages.some(message => message.senderType === 'admin');
   const showWelcome = !messages.length && !loading;
 
   if (location.pathname === '/' || location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
@@ -198,7 +197,7 @@ export default function CustomerChat() {
               </div>
             ))}
             {conversation?.status === 'requested' && <div className="rounded-2xl rounded-tl-sm border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">Waiting for an admin to accept your chat request. Please keep this chat open for the reply.</div>}
-            {conversation?.status === 'open' && !hasAdminReply && <div className="rounded-2xl rounded-tl-sm bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">An admin accepted your request. You can now chat with the store.</div>}
+            {conversation?.status === 'open' && <div className="rounded-2xl rounded-tl-sm border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">You are talking with an admin now.</div>}
           </div>
           <div className="border-t border-surface-200 bg-white p-3">
             {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button>}
