@@ -169,4 +169,23 @@ router.patch('/admin/conversations/:id/read', authenticate, authorize('admin'), 
   }
 });
 
+router.patch('/admin/conversations/:id/close', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const conversation = await prisma.chatConversation.findFirst({ where: { id: Number(req.params.id), tenantId: req.tenantId } });
+    if (!conversation) return res.status(404).json({ success: false, message: 'Conversation not found.' });
+    const updated = await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { status: 'closed', unreadForAdmin: false, unreadForCustomer: false },
+      include: conversationInclude
+    });
+    const payload = { conversation: updated, eventType: 'chat_closed' };
+    req.io?.to(`tenant-${req.tenantId}-admin`).emit('chat_update', payload);
+    req.io?.to(`tenant-${req.tenantId}-chat-${conversation.sessionId}`).emit('chat_update', payload);
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Admin chat close error:', error);
+    res.status(500).json({ success: false, message: 'Failed to end chat.' });
+  }
+});
+
 module.exports = router;

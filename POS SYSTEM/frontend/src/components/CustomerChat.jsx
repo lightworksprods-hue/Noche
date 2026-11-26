@@ -174,7 +174,7 @@ export default function CustomerChat() {
             <button type="button" onClick={() => setOpen(false)} className="rounded-xl p-2 transition hover:bg-white/15" aria-label="Close chat"><X className="h-5 w-5" /></button>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto bg-surface-50 p-4">
-            {(!conversation || conversation.status === 'bot') && (
+            {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && (
               <div className="space-y-2 pt-2">
                 {FAQS.map(faq => <button key={faq.question} type="button" onClick={() => askFaq(faq)} disabled={sending} className="block w-full rounded-xl border border-primary-100 bg-white px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-50">{faq.question}</button>)}
               </div>
@@ -201,7 +201,7 @@ export default function CustomerChat() {
             {conversation?.status === 'open' && !hasAdminReply && <div className="rounded-2xl rounded-tl-sm bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">An admin accepted your request. You can now chat with the store.</div>}
           </div>
           <div className="border-t border-surface-200 bg-white p-3">
-            {(!conversation || conversation.status === 'bot') && <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button>}
+            {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button>}
             <form onSubmit={event => { event.preventDefault(); send(input, conversation?.status === 'open'); }} className="flex items-center gap-2">
               <input value={input} onChange={event => setInput(event.target.value)} disabled={conversation?.status === 'requested' || showOrderPicker} placeholder={conversation?.status === 'requested' ? 'Waiting for admin acceptance...' : showOrderPicker ? 'Choose an active order above...' : conversation?.status === 'open' ? 'Message the admin...' : 'Ask a question...'} className="min-w-0 flex-1 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-sm outline-none focus:border-primary-400 disabled:cursor-not-allowed disabled:opacity-60" />
               <button type="submit" disabled={!input.trim() || sending || conversation?.status === 'requested'} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Send message"><Send className="h-4 w-4" /></button>

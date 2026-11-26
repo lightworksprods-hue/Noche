@@ -94,6 +94,7 @@ export const getAdminChatConversations = () => api.get('/chat/admin/conversation
 export const acceptAdminChatConversation = (conversationId) => api.patch(`/chat/admin/conversations/${conversationId}/accept`);
 export const sendAdminChatMessage = (conversationId, content) => api.post(`/chat/admin/conversations/${conversationId}/messages`, { content });
 export const markAdminChatRead = (conversationId) => api.patch(`/chat/admin/conversations/${conversationId}/read`);
+  export const closeAdminChatConversation = (conversationId) => api.patch(`/chat/admin/conversations/${conversationId}/close`);
 export const getOrderHistory = ({ page = 1, limit = 10 } = {}) => api.get('/orders/history', { params: { page, limit } });
 export const confirmDeliveryReceived = (orderNumber) => api.post(`/orders/${orderNumber}/received`);
 
