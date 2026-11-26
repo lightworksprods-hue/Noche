@@ -47,6 +47,7 @@ router.post('/conversation/messages', async (req, res) => {
     if (existingConversation?.status === 'requested' && !req.body.escalate) {
       return res.status(409).json({ success: false, message: 'Please wait for an admin to accept the chat request.' });
     }
+    const shouldEscalate = Boolean(req.body.escalate) && existingConversation?.status !== 'open';
 
     const conversation = await prisma.chatConversation.upsert({
       where: { tenantId_sessionId: { tenantId: tenant.id, sessionId } },
@@ -56,15 +57,15 @@ router.post('/conversation/messages', async (req, res) => {
         customerId: req.body.customerId ? Number(req.body.customerId) : null,
         customerName: String(req.body.customerName || '').trim().slice(0, 120) || null,
         customerEmail: String(req.body.customerEmail || '').trim().slice(0, 160) || null,
-        status: req.body.escalate ? 'requested' : 'bot',
-        unreadForAdmin: Boolean(req.body.escalate)
+        status: shouldEscalate ? 'requested' : 'bot',
+        unreadForAdmin: shouldEscalate
       },
       update: {
         customerId: req.body.customerId ? Number(req.body.customerId) : undefined,
         customerName: String(req.body.customerName || '').trim().slice(0, 120) || undefined,
         customerEmail: String(req.body.customerEmail || '').trim().slice(0, 160) || undefined,
-        status: req.body.escalate ? 'requested' : undefined,
-        unreadForAdmin: req.body.escalate ? true : undefined
+        status: shouldEscalate ? 'requested' : undefined,
+        unreadForAdmin: shouldEscalate ? true : undefined
       }
     });
     const message = await prisma.chatMessage.create({
@@ -72,7 +73,7 @@ router.post('/conversation/messages', async (req, res) => {
     });
     const updated = await prisma.chatConversation.update({
       where: { id: conversation.id },
-      data: { updatedAt: new Date(), ...(req.body.escalate ? { status: 'requested', unreadForAdmin: true } : {}) },
+      data: { updatedAt: new Date(), ...(shouldEscalate ? { status: 'requested', unreadForAdmin: true } : {}) },
       include: conversationInclude
     });
     const payload = { conversation: updated, message };
