@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Bot, ChevronDown, MessageCircle, Send, UserRound, X } from 'lucide-react';
+import { ChevronDown, MessageCircle, Send, UserRound, X } from 'lucide-react';
 import { getChatConversation, getOrder, sendChatMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -126,13 +126,13 @@ export default function CustomerChat() {
         <div className="flex h-[min(650px,calc(100dvh-7rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[2rem] border border-surface-200 bg-white shadow-2xl animate-scale-in">
           <div className="flex items-center justify-between bg-gradient-to-br from-primary-600 to-primary-800 px-5 py-4 text-white">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/20"><Bot className="h-5 w-5" /></div>
-              <div><p className="font-heading font-black">Noche Support</p><p className="text-[10px] font-bold uppercase tracking-widest text-white/70">FAQ assistant</p></div>
+              <img src="/ms.suki.png" alt="Ms. Suki" className="h-10 w-10 rounded-2xl bg-white object-cover ring-2 ring-white/30" />
+              <div><p className="font-heading font-black">Ms. Suki</p><p className="text-[10px] font-bold uppercase tracking-widest text-white/70">Store assistant</p></div>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-xl p-2 transition hover:bg-white/15" aria-label="Close chat"><X className="h-5 w-5" /></button>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto bg-surface-50 p-4">
-            {showWelcome && <div className="rounded-2xl rounded-tl-sm bg-white p-3 text-sm text-surface-700 shadow-sm">Hi! I can answer common questions about orders, payments, and schedules. How can I help?</div>}
+            {showWelcome && <div className="rounded-2xl rounded-tl-sm bg-white p-3 text-sm text-surface-700 shadow-sm">Hi! I’m Ms. Suki, the store assistant. I can help with orders, payments, schedules, and order updates.</div>}
             {messages.map(message => (
               <div key={message.id} className={`flex ${message.senderType === 'customer' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${message.senderType === 'customer' ? 'rounded-br-sm bg-primary-500 text-white' : 'rounded-bl-sm bg-white text-surface-700'}`}>
@@ -159,7 +159,7 @@ export default function CustomerChat() {
         </div>
       )}
       <button type="button" onClick={() => setOpen(value => !value)} className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-xl shadow-primary-500/30 transition hover:scale-105 hover:bg-primary-600" aria-label="Open support chat">
-        {open ? <ChevronDown className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        {open ? <ChevronDown className="h-6 w-6" /> : <img src="/ms.suki.png" alt="Open Ms. Suki chat" className="h-14 w-14 rounded-full object-cover" />}
         {conversation?.unreadForCustomer && !open && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black ring-2 ring-white">!</span>}
       </button>
     </div>
