@@ -157,7 +157,7 @@ export default function CustomerChat() {
   if (location.pathname === '/' || location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
 
   return (
-    <div className="fixed bottom-8 right-5 z-[180] flex flex-col items-end gap-3 sm:bottom-8 sm:right-6">
+    <div className="fixed bottom-16 right-5 z-[180] flex flex-col items-end gap-3 sm:bottom-12 sm:right-6">
       {open && (
         <div className="flex h-[min(650px,calc(100dvh-7rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[2rem] border border-surface-200 bg-white shadow-2xl animate-scale-in">
           <div className="flex items-center justify-between bg-gradient-to-br from-primary-600 to-primary-800 px-5 py-4 text-white">
