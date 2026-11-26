@@ -1,4 +1,4 @@
-const CACHE_NAME = 'elevate-pos-v6';
+const CACHE_NAME = 'elevate-pos-v7';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html'

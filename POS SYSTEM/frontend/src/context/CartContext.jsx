@@ -1,4 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import { getProducts } from '../services/api';
 
 const CartContext = createContext();
 const STORAGE_KEY = 'pos_cart';
@@ -25,6 +26,15 @@ function cartReducer(state, action) {
       return { ...state, items: state.items.map(i => i.cartKey === action.payload.key ? { ...i, notes: action.payload.notes } : i) };
     case 'TOGGLE_REDEMPTION':
       return { ...state, items: state.items.map(i => i.cartKey === action.payload.key ? { ...i, isRedemption: !i.isRedemption } : i) };
+    case 'ENRICH_PRODUCTS': {
+      const productsById = action.payload;
+      return {
+        ...state,
+        items: state.items.map(item => productsById[item.id]
+          ? { ...item, availabilitySchedule: productsById[item.id].availabilitySchedule || null, stock: productsById[item.id].stock, categoryId: productsById[item.id].categoryId }
+          : item)
+      };
+    }
     case 'CLEAR': return { ...state, items: [] };
     default: return state;
   }
@@ -45,6 +55,19 @@ function round2(n) {
 
 export function CartProvider({ children }) {
   const [state, dispatch] = useReducer(cartReducer, null, loadCart);
+
+  // Refresh product scheduling data for carts created before the schedule feature
+  // or before a product's schedule was changed.
+  useEffect(() => {
+    if (!state.items.length) return;
+    getProducts().then(response => {
+      const productsById = {};
+      (response.data.data || []).forEach(category => (category.products || []).forEach(product => { productsById[product.id] = product; }));
+      dispatch({ type: 'ENRICH_PRODUCTS', payload: productsById });
+    }).catch(() => {
+      // The cart remains usable if the public catalog is temporarily unavailable.
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
