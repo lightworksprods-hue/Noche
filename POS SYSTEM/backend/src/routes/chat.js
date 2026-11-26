@@ -41,6 +41,13 @@ router.post('/conversation/messages', async (req, res) => {
     const content = String(req.body.content || '').trim().slice(0, 1000);
     if (!tenant || !sessionId || !content) return res.status(400).json({ success: false, message: 'Chat message is required.' });
 
+    const existingConversation = await prisma.chatConversation.findUnique({
+      where: { tenantId_sessionId: { tenantId: tenant.id, sessionId } }
+    });
+    if (existingConversation?.status === 'requested' && !req.body.escalate) {
+      return res.status(409).json({ success: false, message: 'Please wait for an admin to accept the chat request.' });
+    }
+
     const conversation = await prisma.chatConversation.upsert({
       where: { tenantId_sessionId: { tenantId: tenant.id, sessionId } },
       create: {
@@ -69,7 +76,9 @@ router.post('/conversation/messages', async (req, res) => {
       include: conversationInclude
     });
     const payload = { conversation: updated, message };
-    req.io?.to(`tenant-${tenant.id}-admin`).emit('chat_update', payload);
+    if (updated.status === 'requested' || updated.status === 'open') {
+      req.io?.to(`tenant-${tenant.id}-admin`).emit('chat_update', payload);
+    }
     req.io?.to(`tenant-${tenant.id}-chat-${sessionId}`).emit('chat_update', payload);
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -81,7 +90,7 @@ router.post('/conversation/messages', async (req, res) => {
 router.get('/admin/conversations', authenticate, authorize('admin'), async (req, res) => {
   try {
     const conversations = await prisma.chatConversation.findMany({
-      where: { tenantId: req.tenantId, status: { not: 'closed' } },
+      where: { tenantId: req.tenantId, status: { in: ['requested', 'open'] } },
       include: conversationInclude,
       orderBy: [{ unreadForAdmin: 'desc' }, { updatedAt: 'desc' }]
     });
@@ -117,6 +126,7 @@ router.post('/admin/conversations/:id/messages', authenticate, authorize('admin'
     const content = String(req.body.content || '').trim().slice(0, 1000);
     const conversation = await prisma.chatConversation.findFirst({ where: { id, tenantId: req.tenantId } });
     if (!conversation) return res.status(404).json({ success: false, message: 'Conversation not found.' });
+    if (conversation.status !== 'open') return res.status(409).json({ success: false, message: 'Accept the chat request before replying.' });
     if (!content) return res.status(400).json({ success: false, message: 'Reply cannot be empty.' });
     const message = await prisma.chatMessage.create({ data: { conversationId: id, senderType: 'admin', senderId: req.user.id, content } });
     const updated = await prisma.chatConversation.update({
