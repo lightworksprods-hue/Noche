@@ -498,7 +498,7 @@ export default function OrdersTab() {
               className="mb-0 flex w-full items-start justify-between gap-3 text-left"
             >
               <div>
-                <p className="font-mono text-sm font-black text-surface-900">#{order.orderNumber}</p>
+                <p className="text-sm font-black text-surface-900">{order.customerName || 'Guest'}</p>
                 <p className="text-xs text-surface-500 mt-1">{formatDate(order.createdAt)}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -513,6 +513,7 @@ export default function OrdersTab() {
               <div className="col-span-2 min-w-0 rounded-2xl bg-surface-50 p-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Customer & order type</p>
                 <p className="font-bold text-surface-900 truncate">{order.customerName || 'Guest'}</p>
+                <p className="text-[11px] font-mono text-surface-500">Order #{order.orderNumber}</p>
                 {order.customerPhone && <p className="text-[11px] text-surface-500">{order.customerPhone}</p>}
                 {order.customerEmail && <p className="text-[11px] text-surface-500 truncate">{order.customerEmail}</p>}
                 <p className="text-[10px] text-surface-400 uppercase font-black mt-1">{getOrderTypeLabel(order.orderType)}</p>
