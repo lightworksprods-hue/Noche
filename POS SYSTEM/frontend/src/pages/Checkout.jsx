@@ -216,7 +216,9 @@ export default function Checkout() {
   const totalPointsCost = getTotalPointsCost();
   const hasInsufficientPoints = totalPointsCost > (user?.points || 0);
 
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('qrph');
+  // Cash is the usable default. QR Ph requires a configured QR image and the
+  // customer's 4-digit reference, so it should only be selected intentionally.
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('cash');
   const paymentMethod = isFullRedemption ? 'points' : selectedPaymentMethod;
 
   const [submitting, setSubmitting] = useState(false);
