@@ -81,6 +81,21 @@ export default function OrdersTab() {
   const [deletingOrderId, setDeletingOrderId] = useState(null);
 
   const isFullPaymentOrder = (order) => order.paymentMode === 'full_payment' || (order.paymentMode === 'custom_payment' && Number(order.paymentAmount || 0) >= Number(order.total || 0));
+  const getSubmittedPaymentAmount = (order) => isFullPaymentOrder(order)
+    ? Number(order.total || 0)
+    : Number(order.paymentAmount || 0) || Number(order.total || 0) * 0.5;
+  const getPaymentPlanLabel = (order) => isFullPaymentOrder(order)
+    ? 'Full payment'
+    : order.paymentMode === 'custom_payment'
+      ? 'Custom payment'
+      : '50% downpayment';
+  const getPaymentSummary = (order) => {
+    const reference = order.paymentMethod === 'qrph' && order.paymentReference
+      ? ` • Ref ${order.paymentReference}`
+      : '';
+    return `${getPaymentPlanLabel(order)}${reference}`;
+  };
+  const getBalance = (order) => Math.max(0, Number(order.total || 0) - getSubmittedPaymentAmount(order));
 
   const handleHardDelete = async () => {
     if (!confirmDelete) return;
@@ -351,11 +366,12 @@ export default function OrdersTab() {
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && (
                       <div className={`mt-1 text-[10px] font-black uppercase ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-red-600'}`}>
                         {order.paymentStatus === 'submitted'
-                          ? `Verify • ${order.paymentMode === 'full_payment' ? 'Full' : '50%'} • Ref ${order.paymentReference || '—'} • ${formatCurrency(order.paymentMode === 'full_payment' ? order.total : order.total * 0.5)}`
+                          ? `Verify • ${getPaymentSummary(order)}`
                           : order.paymentStatus === 'partially_paid'
-                            ? `50% paid • Balance ${formatCurrency(order.total * 0.5)}`
+                            ? `${getPaymentPlanLabel(order)} paid • Balance ${formatCurrency(getBalance(order))}`
                             : order.paymentStatus}
-                        {order.paymentVerifiedAt && <div className="mt-1 normal-case font-semibold text-surface-500">50% verified: {formatDate(order.paymentVerifiedAt)}</div>}
+                        {order.paymentStatus === 'submitted' && <div className="mt-1 normal-case font-black text-amber-700">Amount submitted: {formatCurrency(getSubmittedPaymentAmount(order))}</div>}
+                        {order.paymentVerifiedAt && <div className="mt-1 normal-case font-semibold text-surface-500">{getPaymentPlanLabel(order)} verified: {formatDate(order.paymentVerifiedAt)}</div>}
                         {order.fullyPaidAt && <div className="normal-case font-semibold text-emerald-600">Fully paid: {formatDate(order.fullyPaidAt)}</div>}
                       </div>
                     )}
@@ -370,7 +386,7 @@ export default function OrdersTab() {
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
                       <div className="mb-2 flex justify-end gap-2">
                         <button onClick={() => handlePaymentDecision(order, 'rejected')} className="rounded-lg bg-red-50 px-2 py-1 text-[10px] font-black uppercase text-red-600 hover:bg-red-100">Reject</button>
-                        <button onClick={() => handlePaymentDecision(order, 'paid')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">{isFullPaymentOrder(order) ? 'Confirm Full Payment' : order.paymentMode === 'custom_payment' ? `Confirm ${formatCurrency(order.paymentAmount)} Payment` : 'Confirm 50% Payment'}</button>
+                        <button onClick={() => handlePaymentDecision(order, 'paid')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">Confirm Payment</button>
                       </div>
                     )}
                     {order.paymentStatus === 'partially_paid' && (
@@ -462,24 +478,27 @@ export default function OrdersTab() {
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-4 border-t border-surface-100 pt-4">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Customer</p>
+              <div className="col-span-2 min-w-0 rounded-2xl bg-surface-50 p-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Customer & order type</p>
                 <p className="font-bold text-surface-900 truncate">{order.customerName || 'Guest'}</p>
                 {order.customerPhone && <p className="text-[11px] text-surface-500">{order.customerPhone}</p>}
                 {order.customerEmail && <p className="text-[11px] text-surface-500 truncate">{order.customerEmail}</p>}
                 <p className="text-[10px] text-surface-400 uppercase font-black mt-1">{getOrderTypeLabel(order.orderType)}</p>
-                {order.scheduledFor && <p className="mt-1 text-[11px] font-black text-primary-600">For: {formatDate(order.scheduledFor)}</p>}
-                {order.scheduledFor && <p className={`text-[10px] font-black uppercase ${order.scheduleStatus === 'confirmed' ? 'text-emerald-600' : order.scheduleStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>{order.scheduleStatus === 'confirmed' ? 'Schedule confirmed' : order.scheduleStatus === 'rejected' ? 'Schedule rejected' : 'Schedule needs confirmation'}</p>}
               </div>
-              {order.scheduledFor && order.scheduleStatus === 'pending' && (
-                <div className="col-span-2 flex gap-2">
+              {order.scheduledFor && (
+                <div className="col-span-2 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Preparation schedule</p>
+                  <p className="mt-1 text-sm font-black text-surface-900">{formatDate(order.scheduledFor)}</p>
+                  <p className={`text-[10px] font-black uppercase ${order.scheduleStatus === 'confirmed' ? 'text-emerald-600' : order.scheduleStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>{order.scheduleStatus === 'confirmed' ? 'Date confirmed' : order.scheduleStatus === 'rejected' ? 'Date rejected' : 'Waiting for admin confirmation'}</p>
+                {order.scheduleStatus === 'pending' && <div className="mt-3 flex gap-2">
                   <button onClick={() => handleScheduleDecision(order, 'rejected')} className="flex-1 rounded-xl bg-red-50 py-2 text-[10px] font-black uppercase text-red-600">Reject Date</button>
                   <button onClick={() => handleScheduleDecision(order, 'confirmed')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">Confirm Date</button>
+                </div>}
                 </div>
               )}
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Total</p>
-                <p className="font-black text-surface-900">{formatCurrency(order.total)}</p>
+              <div className="col-span-2 flex items-center justify-between border-t border-surface-100 pt-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400">Order total</p>
+                <p className="text-lg font-black text-surface-900">{formatCurrency(order.total)}</p>
               </div>
               <div className="col-span-2 border-t border-surface-100 pt-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2">Ordered Items</p>
@@ -487,30 +506,33 @@ export default function OrdersTab() {
                   {(order.items || []).map(item => (
                     <div key={item.id} className="flex items-center justify-between gap-3 text-sm text-surface-700">
                       <span><span className="font-black text-surface-900">{item.quantity}×</span> {item.productName}</span>
-                      <span className="flex-shrink-0 font-bold text-surface-900">{formatCurrency(item.subtotal)}</span>
                     </div>
                   ))}
                 </div>
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Payment</p>
+              <div className="col-span-2 rounded-2xl border border-surface-200 bg-surface-50 p-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1">Payment review</p>
                 <p className="text-sm font-medium text-surface-600 capitalize">{order.paymentMethod === 'qrph' ? 'QR Ph' : (order.paymentMethod || 'Cash')}</p>
                 {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && (
                   <p className={`text-[10px] font-black uppercase mt-1 ${order.paymentStatus === 'submitted' ? 'text-amber-600' : order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-red-600'}`}>
                     {order.paymentStatus === 'submitted'
-                      ? `${order.paymentMode === 'full_payment' ? 'Full' : '50%'} • Ref ${order.paymentReference || '—'} • ${formatCurrency(order.paymentMode === 'full_payment' ? order.total : order.total * 0.5)}`
+                      ? getPaymentSummary(order)
                       : order.paymentStatus === 'partially_paid'
-                        ? `50% paid • Balance ${formatCurrency(order.total * 0.5)}`
+                        ? `${getPaymentPlanLabel(order)} paid • Balance ${formatCurrency(getBalance(order))}`
                         : order.paymentStatus}
-                    {order.paymentVerifiedAt && <span className="mt-1 block normal-case font-semibold text-surface-500">50% verified: {formatDate(order.paymentVerifiedAt)}</span>}
+                    {order.paymentStatus === 'submitted' && <span className="mt-1 block normal-case font-black text-amber-700">Amount submitted: {formatCurrency(getSubmittedPaymentAmount(order))}</span>}
+                    {order.paymentVerifiedAt && <span className="mt-1 block normal-case font-semibold text-surface-500">{getPaymentPlanLabel(order)} verified: {formatDate(order.paymentVerifiedAt)}</span>}
                     {order.fullyPaidAt && <span className="block normal-case font-semibold text-emerald-600">Fully paid: {formatDate(order.fullyPaidAt)}</span>}
                   </p>
                 )}
               </div>
               {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
-                <div className="col-span-2 flex gap-2">
+                <div className="col-span-2 border-t border-surface-100 pt-3">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-surface-400">Payment decision</p>
+                  <div className="flex gap-2">
                   <button onClick={() => handlePaymentDecision(order, 'rejected')} className="flex-1 rounded-xl bg-red-50 py-2 text-[10px] font-black uppercase text-red-600">Reject Payment</button>
-                  <button onClick={() => handlePaymentDecision(order, 'paid')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">{isFullPaymentOrder(order) ? 'Confirm Full Payment' : order.paymentMode === 'custom_payment' ? `Confirm ${formatCurrency(order.paymentAmount)} Payment` : 'Confirm 50% Payment'}</button>
+                  <button onClick={() => handlePaymentDecision(order, 'paid')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">Confirm Payment</button>
+                  </div>
                 </div>
               )}
               {order.paymentStatus === 'partially_paid' && (

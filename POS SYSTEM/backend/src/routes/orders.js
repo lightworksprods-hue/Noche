@@ -101,6 +101,11 @@ router.post('/', async (req, res) => {
     if (!tenant) {
       return res.status(404).json({ success: false, message: 'Shop not found.' });
     }
+
+    if (!isCounterOrder && orderType === 'delivery' && (tenant.deliveryDisabled || tenant.saDeliveryDisabled)) {
+      return res.status(400).json({ success: false, message: 'Delivery is currently unavailable. Please choose pickup.' });
+    }
+
     const tenantId = tenant.id;
 
     // Offline cashier retries reuse this ID so a request cannot create a duplicate sale.

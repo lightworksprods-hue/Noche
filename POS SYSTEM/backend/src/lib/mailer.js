@@ -52,7 +52,8 @@ const sendOTPEmail = async (email, otp, tenant = {}) => {
         name: name, 
         email: process.env.EMAIL_USER || 'jasonanthonytrillo@gmail.com'
       },
-      to: [{ email: email }],
+      // Prevent Brevo from replacing the verification URL with a tracking redirect.
+      to: [{ email: email, contactPixelTrackingConsent: false }],
       subject: `[${otp}] Your Verification Code for ${name}`,
       htmlContent: `
               <!DOCTYPE html>

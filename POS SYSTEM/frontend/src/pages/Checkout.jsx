@@ -155,6 +155,15 @@ export default function Checkout() {
   const [deliveryInfo, setDeliveryInfo] = useState({ address: '', lat: null, lng: null, fee: 0 });
   const [paymentReference, setPaymentReference] = useState('');
 
+  const deliveryDisabled = Boolean(branding?.deliveryDisabled || branding?.saDeliveryDisabled);
+
+  useEffect(() => {
+    if (deliveryDisabled && orderType === 'delivery') {
+      setOrderType('pickup');
+      setDeliveryInfo({ address: '', lat: null, lng: null, fee: 0 });
+    }
+  }, [deliveryDisabled, orderType]);
+
   const [promoCodeInput, setPromoCodeInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState(null);
   const [promoError, setPromoError] = useState('');
@@ -456,7 +465,7 @@ export default function Checkout() {
         <div className="glass-card p-5 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <label className="block text-sm font-semibold text-surface-700 mb-3">{t('orderType')}</label>
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {ORDER_TYPES.map(t => (
+            {ORDER_TYPES.filter(type => !deliveryDisabled || type.id !== 'delivery').map(t => (
                 <button key={t.id} type="button" onClick={() => setOrderType(t.id)}
                   className={`p-3 sm:p-4 rounded-xl border-2 text-center font-semibold transition-all ${orderType === t.id ? 'border-transparent text-white' : 'border-surface-200 hover:border-primary-300 text-surface-600'}`}
                   style={orderType === t.id ? { backgroundColor: brandingColor, borderColor: brandingColor, color: '#ffffff' } : {}}>
