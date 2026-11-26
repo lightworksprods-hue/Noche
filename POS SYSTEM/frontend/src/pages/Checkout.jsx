@@ -542,18 +542,18 @@ export default function Checkout() {
               <label className="text-sm font-bold text-surface-900">Payment Option</label>
               <span className="text-[10px] font-black uppercase tracking-widest text-surface-400">Choose one</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { id: 'downpayment', label: '50% Downpayment' },
                 { id: 'full_payment', label: 'Pay in Full' },
                 { id: 'custom_payment', label: 'Custom Amount' }
               ].map(option => (
                 <button key={option.id} type="button" onClick={() => setPaymentMode(option.id)}
-                  className={`flex min-h-16 items-center justify-center gap-2 rounded-2xl border-2 px-3 py-3 text-center transition-all ${paymentMode === option.id ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm' : 'border-surface-200 bg-white text-surface-600 hover:border-primary-300'}`}>
+                  className={`flex min-h-16 items-center justify-center gap-3 rounded-2xl border-2 px-4 py-3 text-center transition-all ${option.id === 'custom_payment' ? 'sm:col-span-2' : ''} ${paymentMode === option.id ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm' : 'border-surface-200 bg-white text-surface-600 hover:border-primary-300'}`}>
                   <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${paymentMode === option.id ? 'border-primary-500' : 'border-surface-300'}`}>
                     {paymentMode === option.id && <span className="h-2.5 w-2.5 rounded-full bg-primary-500" />}
                   </span>
-                  <span className="block text-[11px] sm:text-[10px] lg:text-xs font-black uppercase tracking-wide">{option.label}</span>
+                  <span className="block text-xs font-black uppercase tracking-wide">{option.label}</span>
                 </button>
               ))}
             </div>
