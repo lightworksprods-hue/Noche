@@ -155,7 +155,11 @@ export default function OrderConfirmation() {
   const tenantSlug = searchParams.get('tenant') || 'project-million';
   const [branding, setBranding] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showScheduleRejectionNotice, setShowScheduleRejectionNotice] = useState(false);
+  const [showPaymentRejectionNotice, setShowPaymentRejectionNotice] = useState(false);
   const lastAnnouncedStatusRef = useRef(null);
+  const lastScheduleNoticeRef = useRef(null);
+  const lastPaymentNoticeRef = useRef(null);
 
   // Feedback State
   const [rating, setRating] = useState(0);
@@ -325,6 +329,22 @@ export default function OrderConfirmation() {
     const interval = setInterval(loadOrder, 30000);
     return () => clearInterval(interval);
   }, [orderNumber]);
+
+  useEffect(() => {
+    if (order?.scheduleStatus !== 'rejected') return;
+    const noticeKey = `${order.id || order.orderNumber}:${order.scheduleConfirmedAt || order.scheduleStatus}:${order.scheduleNote || ''}`;
+    if (lastScheduleNoticeRef.current === noticeKey) return;
+    lastScheduleNoticeRef.current = noticeKey;
+    setShowScheduleRejectionNotice(true);
+  }, [order]);
+
+  useEffect(() => {
+    if (order?.paymentStatus !== 'rejected') return;
+    const noticeKey = `${order.id || order.orderNumber}:${order.paymentStatus}:${order.paymentReference || ''}`;
+    if (lastPaymentNoticeRef.current === noticeKey) return;
+    lastPaymentNoticeRef.current = noticeKey;
+    setShowPaymentRejectionNotice(true);
+  }, [order]);
 
   useEffect(() => {
     if (order?.tenantId && orderNumber) {
@@ -516,6 +536,10 @@ export default function OrderConfirmation() {
               <span className={`font-bold text-xs sm:text-sm flex items-center gap-1.5 ${order.paymentStatus === 'paid' ? 'text-emerald-700' : 'text-slate-800'}`}>
                 {order.paymentStatus === 'paid' ? (
                   <><CheckCircle className="w-4 h-4" /> PAID</>
+                ) : order.paymentMethod === 'qrph' && isPartialPayment && payableBalance > 0 ? (
+                  <><Clock className="w-4 h-4" /> ONLINE PAYMENT CONFIRMED · BALANCE DUE</>
+                ) : order.paymentMethod === 'qrph' ? (
+                  <><Clock className="w-4 h-4" /> ONLINE PAYMENT SUBMITTED</>
                 ) : order.orderType === 'delivery' ? (
                   <><Clock className="w-4 h-4" /> CONFIRMING PAYMENT</>
                 ) : (
@@ -975,6 +999,69 @@ export default function OrderConfirmation() {
                 className="flex-1 py-3.5 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all active:scale-95"
               >
                 Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showScheduleRejectionNotice && order.scheduleStatus === 'rejected' && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-fade-in" role="alertdialog" aria-modal="true" aria-labelledby="schedule-rejected-title">
+          <div className="w-full max-w-sm overflow-hidden rounded-[2rem] border border-red-100 bg-white shadow-2xl animate-scale-in">
+            <div className="bg-gradient-to-br from-red-500 to-rose-600 px-6 pb-7 pt-8 text-center text-white">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/20 ring-8 ring-white/10">
+                <AlertTriangle className="h-8 w-8" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">Schedule update</p>
+              <h3 id="schedule-rejected-title" className="mt-2 text-2xl font-black">Date request rejected</h3>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-sm leading-relaxed text-slate-600">
+                We’re sorry, but the store cannot cater your requested date and time for this order.
+              </p>
+              {order.scheduleNote && (
+                <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-left text-sm font-semibold leading-relaxed text-red-700">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-red-500">Store message</span>
+                  {order.scheduleNote}
+                </div>
+              )}
+              <p className="mt-4 text-xs text-slate-500">Please contact the store to arrange another available date and time.</p>
+              <button
+                type="button"
+                onClick={() => setShowScheduleRejectionNotice(false)}
+                className="mt-6 w-full rounded-2xl bg-slate-900 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800 active:scale-[0.98]"
+              >
+                Okay, I understand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showPaymentRejectionNotice && order.paymentStatus === 'rejected' && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-fade-in" role="alertdialog" aria-modal="true" aria-labelledby="payment-rejected-title">
+          <div className="w-full max-w-sm overflow-hidden rounded-[2rem] border border-red-100 bg-white shadow-2xl animate-scale-in">
+            <div className="bg-gradient-to-br from-red-500 to-rose-600 px-6 pb-7 pt-8 text-center text-white">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/20 ring-8 ring-white/10">
+                <XCircle className="h-8 w-8" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">Payment update</p>
+              <h3 id="payment-rejected-title" className="mt-2 text-2xl font-black">Payment rejected</h3>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-sm leading-relaxed text-slate-600">
+                We couldn’t verify the payment submitted for this order. Please contact the store or submit a valid payment again.
+              </p>
+              {order.paymentReference && (
+                <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                  Reference ending in <span className="font-black">{order.paymentReference}</span> was not verified.
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowPaymentRejectionNotice(false)}
+                className="mt-6 w-full rounded-2xl bg-slate-900 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800 active:scale-[0.98]"
+              >
+                Okay, I understand
               </button>
             </div>
           </div>

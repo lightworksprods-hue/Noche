@@ -79,6 +79,8 @@ export default function OrdersTab() {
 
   const [confirmDelete, setConfirmDelete] = useState(null); // Stores { id, orderNumber } when modal is open
   const [confirmCancel, setConfirmCancel] = useState(null);
+  const [scheduleRejection, setScheduleRejection] = useState(null);
+  const [scheduleNote, setScheduleNote] = useState('');
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
   const cancelModalRef = useRef(null);
@@ -194,11 +196,25 @@ export default function OrdersTab() {
   };
 
   const handleScheduleDecision = async (order, scheduleStatus) => {
-    const scheduleNote = scheduleStatus === 'rejected'
-      ? window.prompt('Why can this requested date/time not be catered?') || ''
-      : '';
+    if (scheduleStatus === 'rejected') {
+      setScheduleNote('');
+      setScheduleRejection(order);
+      return;
+    }
     try {
-      await updateAdminOrderSchedule(order.id, scheduleStatus, scheduleNote);
+      await updateAdminOrderSchedule(order.id, scheduleStatus, '');
+      await loadOrders();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to update the requested schedule.');
+    }
+  };
+
+  const handleConfirmScheduleRejection = async () => {
+    if (!scheduleRejection) return;
+    try {
+      await updateAdminOrderSchedule(scheduleRejection.id, 'rejected', scheduleNote.trim());
+      setScheduleRejection(null);
+      setScheduleNote('');
       await loadOrders();
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to update the requested schedule.');
@@ -282,6 +298,32 @@ export default function OrdersTab() {
               >
                 Confirm Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scheduleRejection && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-surface-950/55 p-4 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="schedule-rejection-title">
+          <div className="w-full max-w-md rounded-[2rem] border border-primary-100 bg-white p-6 shadow-2xl animate-scale-in sm:p-8">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+              <CircleAlert className="h-7 w-7" />
+            </div>
+            <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-primary-600">Schedule request</p>
+            <h3 id="schedule-rejection-title" className="mt-2 text-center font-heading text-xl font-black text-surface-900">Why can’t this schedule be catered?</h3>
+            <p className="mt-2 text-center text-sm leading-relaxed text-surface-500">Add a short explanation for the customer. This message will be saved with the order.</p>
+            <textarea
+              autoFocus
+              value={scheduleNote}
+              onChange={event => setScheduleNote(event.target.value)}
+              placeholder="Example: We are fully booked for this time slot."
+              rows={4}
+              maxLength={250}
+              className="mt-5 w-full resize-none rounded-2xl border-2 border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-primary-400 focus:bg-white"
+            />
+            <div className="mt-5 flex gap-3">
+              <button type="button" onClick={() => { setScheduleRejection(null); setScheduleNote(''); }} className="flex-1 rounded-2xl bg-surface-100 px-4 py-3 text-xs font-black uppercase tracking-widest text-surface-600 transition hover:bg-surface-200">Cancel</button>
+              <button type="button" onClick={handleConfirmScheduleRejection} className="flex-1 rounded-2xl bg-red-500 px-4 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600">Reject schedule</button>
             </div>
           </div>
         </div>
