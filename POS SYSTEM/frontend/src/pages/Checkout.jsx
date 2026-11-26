@@ -10,6 +10,12 @@ import LocationPicker from '../components/LocationPicker';
 import { useSocket } from '../context/SocketContext';
 import useStoreOperationRealtime from '../hooks/useStoreOperationRealtime';
 
+const normalizePhilippinePhone = (value = '') => {
+  const digits = String(value).replace(/\D/g, '');
+  if (digits.startsWith('63') && digits.length === 12) return `0${digits.slice(2)}`;
+  return digits.slice(0, 11);
+};
+
 const isProductAvailableOnDate = (product, date, time) => {
   const dates = product?.availabilitySchedule?.dates;
   if (!dates?.length || !date || !time) return true;
@@ -167,7 +173,7 @@ export default function Checkout() {
     }
   }, [user?.id]);
   const [customerName, setCustomerName] = useState(() => savedContact?.name || user?.name || '');
-  const [customerPhone, setCustomerPhone] = useState(() => savedContact?.phone || user?.phone || '');
+  const [customerPhone, setCustomerPhone] = useState(() => normalizePhilippinePhone(savedContact?.phone || user?.phone || ''));
   const [customerEmail, setCustomerEmail] = useState(() => savedContact?.email || user?.email || '');
   const [paymentMode, setPaymentMode] = useState('downpayment');
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
@@ -483,7 +489,7 @@ export default function Checkout() {
           {user && savedContact && (
             <button type="button" onClick={() => {
               setCustomerName(savedContact.name || user.name || '');
-              setCustomerPhone(savedContact.phone || '');
+              setCustomerPhone(normalizePhilippinePhone(savedContact.phone || ''));
               setCustomerEmail(savedContact.email || user.email || '');
             }} className="mb-4 w-full rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100">
               Use saved information
