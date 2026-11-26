@@ -299,10 +299,8 @@ export default function AdminDashboard() {
         </header>
 
         <div className="relative min-w-0 flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">
-          {featureLocks[activeTab] ? (
-            <LockedFeature featureName={featureLabels[activeTab]} />
-          ) : (
-            <>
+          <div className="relative min-h-full">
+            <div className={featureLocks[activeTab] ? 'pointer-events-none select-none blur-sm opacity-60' : ''}>
           {activeTab === 'overview' && summary && (
             <div className="animate-fade-in w-full max-w-[1400px] mx-auto space-y-6 sm:space-y-8">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -403,8 +401,9 @@ export default function AdminDashboard() {
           {activeTab === 'staff' && <StaffTab />}
           {activeTab === 'inventory' && <InventoryTab />}
           {activeTab === 'settings' && <SettingsTab />}
-            </>
-          )}
+            </div>
+            {featureLocks[activeTab] && <LockedFeature featureName={featureLabels[activeTab]} />}
+          </div>
         </div>
       </main>
     </div>
@@ -435,7 +434,7 @@ function StatCard({ title, value, icon, color }) {
 
 function LockedFeature({ featureName }) {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center p-4">
+    <div className="absolute inset-0 z-10 flex min-h-[60vh] items-center justify-center bg-white/25 p-4 backdrop-blur-[1px]">
       <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-primary-200 bg-white text-center shadow-xl shadow-primary-500/10">
         <div className="bg-gradient-to-br from-primary-600 to-primary-800 px-6 pb-8 pt-8 text-white">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/15 ring-1 ring-white/30">
