@@ -286,7 +286,10 @@ model Payment {
 model DebtPlan {
   id            Int      @id @default(autoincrement())
   tenantId      Int
-  orderId       Int      @unique
+  orderId       Int?     @unique
+  customerName  String   @default("Guest")
+  customerPhone String?
+  customerEmail String?
   frequency     String   // every_15th or monthly
   initialBalance Float
   balance       Float
@@ -297,7 +300,7 @@ model DebtPlan {
   updatedAt     DateTime @updatedAt
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   payments      DebtPayment[]
 
   @@index([tenantId, status, nextDueDate])

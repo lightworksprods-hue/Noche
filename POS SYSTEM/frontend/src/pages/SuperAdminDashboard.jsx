@@ -8,6 +8,7 @@ import { Building2, LogOut, Zap, Plus, AlertTriangle, CheckCircle, X } from 'luc
 const ADMIN_FEATURE_OPTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'orders', label: 'Orders' },
+  { id: 'utang', label: 'Utang Tracker' },
   { id: 'products', label: 'Products' },
   { id: 'categories', label: 'Categories' },
   { id: 'inventory', label: 'Stock / Inventory' },

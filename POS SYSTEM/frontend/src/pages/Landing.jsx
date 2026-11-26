@@ -317,9 +317,9 @@ export default function Landing() {
                 {isCustomer ? 'Start Ordering' : 'Start Order'}
               </Link>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full mt-2">
+              <div className="w-full mt-2">
                 {!user && (
-                  <Link to={portalLink} className="w-full md:col-span-2 md:max-w-sm md:mx-auto py-4 px-6 bg-white/5 border border-white/10 text-white hover:bg-white/10 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+                  <Link to={portalLink} className="w-full text-xl md:text-lg lg:text-xl py-6 md:py-5 lg:py-6 px-6 bg-white/5 border border-white/10 text-white hover:bg-white/10 rounded-3xl font-black tracking-widest uppercase transition-all flex items-center justify-center gap-2">
                     <span></span> Sign In
                   </Link>
                 )}

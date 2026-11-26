@@ -32,7 +32,8 @@ const sendOTPEmail = async (email, otp, tenant = {}) => {
     absoluteLogo = `https://hometownbrew.jasonanthonytrillo.workers.dev${logo}`;
   }
 
-  if (!process.env.EMAIL_PASS) {
+  // Brevo HTTP API authentication uses BREVO_API_KEY and does not need SMTP EMAIL_PASS.
+  if (!process.env.BREVO_API_KEY && !process.env.EMAIL_PASS) {
     console.log('\n=============================================');
     console.log(`🔑 [DEV MODE] OTP Code for ${email}: ${otp}`);
     console.log('=============================================\n');
@@ -185,7 +186,7 @@ const sendBookedOrderEmail = async (order, tenant = {}) => {
     ? `<img src="${escapeHtml(absoluteLogo)}" alt="${escapeHtml(name)}" style="height:48px;width:auto;border-radius:12px;display:block;margin:0 auto;">`
     : `<div style="width:48px;height:48px;line-height:48px;margin:0 auto;border-radius:14px;background:#ffffff;color:${primaryColor};font-size:20px;font-weight:900;text-align:center;">${escapeHtml(name.charAt(0))}</div>`;
 
-  if (!process.env.EMAIL_PASS) {
+  if (!process.env.BREVO_API_KEY && !process.env.EMAIL_PASS) {
     console.log(`📧 [DEV MODE] Booked order email for ${order.customerEmail}: #${order.orderNumber}`);
     return { success: true, message: 'Mock booked order email logged to console' };
   }

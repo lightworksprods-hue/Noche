@@ -299,13 +299,39 @@ router.post('/orders/:id/utang', authenticate, authorize('admin'), async (req, r
 
     const plan = await prisma.debtPlan.upsert({
       where: { orderId },
-      create: { tenantId: req.tenantId, orderId, frequency, initialBalance: balance, balance, nextDueDate: dueDate, notes: String(notes || '').trim() || null },
-      update: { frequency, nextDueDate: dueDate, status: 'active', notes: String(notes || '').trim() || null }
+      create: { tenantId: req.tenantId, orderId, customerName: order.customerName || 'Guest', customerPhone: order.customerPhone || null, customerEmail: order.customerEmail || null, frequency, initialBalance: balance, balance, nextDueDate: dueDate, notes: String(notes || '').trim() || null },
+      update: { frequency, nextDueDate: dueDate, status: 'active', notes: String(notes || '').trim() || null, customerName: order.customerName || 'Guest', customerPhone: order.customerPhone || null, customerEmail: order.customerEmail || null }
     });
     res.json({ success: true, data: plan });
   } catch (error) {
     console.error('Utang plan setup error:', error);
     res.status(500).json({ success: false, message: 'Failed to set up the utang plan.' });
+  }
+});
+
+// POST /api/admin/utang/manual — Add a customer who has no account/order in the system.
+router.post('/utang/manual', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const customerName = String(req.body.customerName || '').trim();
+    const customerPhone = String(req.body.customerPhone || '').trim() || null;
+    const customerEmail = String(req.body.customerEmail || '').trim() || null;
+    const frequency = req.body.frequency;
+    const dueDate = new Date(req.body.nextDueDate || '');
+    const balance = Number(req.body.balance);
+    const notes = String(req.body.notes || '').trim() || null;
+
+    if (!customerName) return res.status(400).json({ success: false, message: 'Enter the customer name.' });
+    if (!['every_15th', 'monthly'].includes(frequency)) return res.status(400).json({ success: false, message: 'Choose every 15th or monthly.' });
+    if (Number.isNaN(dueDate.getTime())) return res.status(400).json({ success: false, message: 'Choose a valid next due date.' });
+    if (!Number.isFinite(balance) || balance <= 0) return res.status(400).json({ success: false, message: 'Enter a valid remaining balance.' });
+
+    const plan = await prisma.debtPlan.create({
+      data: { tenantId: req.tenantId, customerName, customerPhone, customerEmail, frequency, initialBalance: balance, balance, nextDueDate: dueDate, notes }
+    });
+    res.json({ success: true, data: plan });
+  } catch (error) {
+    console.error('Manual utang setup error:', error);
+    res.status(500).json({ success: false, message: 'Failed to add the manual utang account.' });
   }
 });
 
@@ -333,11 +359,15 @@ router.post('/utang/:id/payment', authenticate, authorize('admin'), async (req, 
     const result = await prisma.$transaction(async tx => {
       const payment = await tx.debtPayment.create({ data: { debtPlanId: plan.id, amount, paymentMethod, note: String(req.body.note || '').trim() || null, paidAt, recordedBy: req.user.id } });
       const updatedPlan = await tx.debtPlan.update({ where: { id: plan.id }, data: { balance: remaining, status: remaining <= 0.01 ? 'paid' : 'active', nextDueDate: nextDueDate > paidAt ? nextDueDate : new Date(paidAt.getTime() + 86400000) }, include: { order: true, payments: { orderBy: { paidAt: 'desc' } } } });
-      await tx.order.update({ where: { id: plan.orderId }, data: { updatedAt: new Date() } });
+      if (plan.orderId) {
+        await tx.order.update({ where: { id: plan.orderId }, data: { updatedAt: new Date() } });
+      }
       return { payment, updatedPlan };
     });
-    const updatedOrder = await prisma.order.findUnique({ where: { id: plan.orderId }, include: { items: true, payments: true } });
-    if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updatedOrder, 'utang_payment_updated');
+    if (plan.orderId) {
+      const updatedOrder = await prisma.order.findUnique({ where: { id: plan.orderId }, include: { items: true, payments: true } });
+      if (req.io?.emitOrderUpdate) req.io.emitOrderUpdate(updatedOrder, 'utang_payment_updated');
+    }
     res.json({ success: true, data: result.updatedPlan });
   } catch (error) {
     console.error('Utang payment error:', error);
@@ -1694,19 +1724,36 @@ router.delete('/orders/:id', authenticate, authorize('admin'), async (req, res) 
     // The user said "hard delete the cancelled orders", but an admin might need to delete others too.
     // However, I'll keep it general for admin but warn in UI.
 
-    await prisma.order.delete({
-      where: { id: orderId, tenantId: req.tenantId }
-    });
+    await prisma.$transaction(async (tx) => {
+      // Remove dependent records explicitly. This keeps hard delete working
+      // even when an existing database has older/non-cascading FK rules.
+      const debtPlan = await tx.debtPlan.findUnique({
+        where: { orderId },
+        select: { id: true }
+      });
 
-    await prisma.auditLog.create({
-      data: {
-        tenantId: req.tenantId,
-        userId: req.user.id,
-        action: 'hard_delete_order',
-        entityType: 'order',
-        entityId: order.orderNumber,
-        details: `Permanently deleted Order #${order.orderNumber} (Status was: ${order.status})`
+      if (debtPlan) {
+        await tx.debtPayment.deleteMany({ where: { debtPlanId: debtPlan.id } });
+        await tx.debtPlan.delete({ where: { id: debtPlan.id } });
       }
+
+      await tx.pushSubscription.deleteMany({ where: { orderId } });
+      await tx.notification.deleteMany({ where: { orderId } });
+      await tx.payment.deleteMany({ where: { orderId } });
+      await tx.orderItem.deleteMany({ where: { orderId } });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.tenantId,
+          userId: req.user.id,
+          action: 'hard_delete_order',
+          entityType: 'order',
+          entityId: order.orderNumber,
+          details: `Permanently deleted Order #${order.orderNumber} (Status was: ${order.status})`
+        }
+      });
+
+      await tx.order.delete({ where: { id: orderId } });
     });
 
     res.json({ success: true, message: `Order #${order.orderNumber} permanently deleted.` });

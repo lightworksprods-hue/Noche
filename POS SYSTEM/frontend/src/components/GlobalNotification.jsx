@@ -256,6 +256,11 @@ export default function GlobalNotification() {
     });
   };
 
+  const spokenOrderNumber = (orderNumber) => {
+    const digits = String(orderNumber || '').replace(/\D/g, '');
+    return (digits || String(orderNumber || '')).split('').join(' ');
+  };
+
   const triggerCancelledAlert = (orderNum, reason) => {
     const dismissed = sessionStorage.getItem(`cancel_dismissed_${orderNum}`);
     if (dismissed) return;
@@ -294,10 +299,10 @@ export default function GlobalNotification() {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const text = orderNums.length > 1
-          ? `Your orders are ready. Please check your status screen.`
+          ? `Your orders ${orderNums.map(order => spokenOrderNumber(order.number)).join(' and ')} are ready. Please proceed to Mona's store to pick up your orders.`
           : orderNums[0].type === 'delivery'
-            ? `Your order ${orderNums[0].number.includes('-') ? orderNums[0].number.split('-')[1] : orderNums[0].number} is being prepared for delivery.`
-            : `Your order ${orderNums[0].number.includes('-') ? orderNums[0].number.split('-')[1] : orderNums[0].number} is ready. Please proceed to the counter.`;
+            ? `Your order ${spokenOrderNumber(orderNums[0].number)} is being prepared for delivery.`
+            : `Your order ${spokenOrderNumber(orderNums[0].number)} is ready. Please proceed to Mona's store to pick up your order.`;
 
         console.log(`📢 Speaking: "${text}"`);
         const msg = new SpeechSynthesisUtterance(text);
@@ -419,7 +424,7 @@ export default function GlobalNotification() {
                 : `Please proceed to the counter to pick up your order${readyOrderNumbers.length > 1 ? 's' : ''}.`}
             </p>
             <button onClick={dismissReadyAlert} className="bg-white text-emerald-800 font-bold text-lg sm:text-xl px-12 py-5 rounded-2xl shadow-2xl hover:bg-emerald-50 transition-all active:scale-95">
-              Okay
+              Confirm
             </button>
           </div>
         </div>

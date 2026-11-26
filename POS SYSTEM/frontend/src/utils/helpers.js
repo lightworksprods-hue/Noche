@@ -44,9 +44,13 @@ export function unlockAudio() {
 export function playNotificationSound(type = 'default') {
   try {
     const ctx = getAudioCtx();
-    if (!ctx || ctx.state === 'suspended') {
+    if (!ctx) {
       // If context doesn't exist or is suspended, we can't play sound yet.
       // This is expected if the user hasn't interacted with the page yet.
+      return;
+    }
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => playNotificationSound(type)).catch(() => {});
       return;
     }
 

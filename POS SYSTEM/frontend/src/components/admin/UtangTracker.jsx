@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createAdminUtang, getAdminOrders, getAdminUtang, recordAdminUtangPayment } from '../../services/api';
+import { createAdminManualUtang, createAdminUtang, getAdminOrders, getAdminUtang, recordAdminUtangPayment } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { CalendarClock, CreditCard, PlusCircle } from 'lucide-react';
 
@@ -8,7 +8,11 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function UtangTracker() {
   const [plans, setPlans] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [entryMode, setEntryMode] = useState('order');
   const [orderId, setOrderId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [balance, setBalance] = useState('');
   const [frequency, setFrequency] = useState('every_15th');
   const [nextDueDate, setNextDueDate] = useState(today());
   const [paymentAmounts, setPaymentAmounts] = useState({});
@@ -34,10 +38,17 @@ export default function UtangTracker() {
 
   const setupPlan = async (event) => {
     event.preventDefault();
-    if (!orderId) return;
     try {
-      await createAdminUtang(orderId, { frequency, nextDueDate });
+      if (entryMode === 'manual') {
+        await createAdminManualUtang({ customerName, customerPhone, balance, frequency, nextDueDate });
+      } else {
+        if (!orderId) return;
+        await createAdminUtang(orderId, { frequency, nextDueDate });
+      }
       setOrderId('');
+      setCustomerName('');
+      setCustomerPhone('');
+      setBalance('');
       setMessage('Utang plan created.');
       await load();
     } catch (error) {
@@ -66,10 +77,15 @@ export default function UtangTracker() {
       </div>
 
       <form onSubmit={setupPlan} className="rounded-3xl border border-surface-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="mb-4 flex items-center gap-2 text-sm font-black text-surface-900"><PlusCircle className="h-5 w-5 text-primary-600" /> Add order to utang tracker</div>
-        <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
-          <label className="text-xs font-bold text-surface-500">Order / Customer
-            <select value={orderId} onChange={e => setOrderId(e.target.value)} className="input-field mt-1" required>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm font-black text-surface-900"><span className="flex items-center gap-2"><PlusCircle className="h-5 w-5 text-primary-600" /> Add customer to utang tracker</span><div className="flex rounded-xl bg-surface-100 p-1 text-[10px] font-black uppercase"><button type="button" onClick={() => setEntryMode('order')} className={`rounded-lg px-3 py-2 ${entryMode === 'order' ? 'bg-white text-primary-700 shadow-sm' : 'text-surface-500'}`}>Existing order</button><button type="button" onClick={() => setEntryMode('manual')} className={`rounded-lg px-3 py-2 ${entryMode === 'manual' ? 'bg-white text-primary-700 shadow-sm' : 'text-surface-500'}`}>Manual customer</button></div></div>
+        <div className={`grid gap-3 md:items-end ${entryMode === 'manual' ? 'md:grid-cols-[2fr_1fr_1fr_1fr_auto]' : 'md:grid-cols-[2fr_1fr_1fr_auto]'}`}>
+          {entryMode === 'manual' && <>
+            <label className="text-xs font-bold text-surface-500">Customer name<input value={customerName} onChange={e => setCustomerName(e.target.value)} className="input-field mt-1" placeholder="e.g. Juan Dela Cruz" required /></label>
+            <label className="text-xs font-bold text-surface-500">Phone (optional)<input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="input-field mt-1" placeholder="09..." /></label>
+            <label className="text-xs font-bold text-surface-500">Remaining balance<input type="number" min="0.01" step="0.01" value={balance} onChange={e => setBalance(e.target.value)} className="input-field mt-1" placeholder="0.00" required /></label>
+          </>}
+          <label className={`text-xs font-bold text-surface-500 ${entryMode === 'manual' ? 'hidden' : ''}`}>Order / Customer
+            <select value={orderId} onChange={e => setOrderId(e.target.value)} className="input-field mt-1" required={entryMode === 'order'}>
               <option value="">Select an unpaid order</option>
               {eligibleOrders.map(order => <option key={order.id} value={order.id}>#{String(order.orderNumber).replace(/^POS-/, '')} — {order.customerName || 'Guest'} — {formatCurrency(order.total)}</option>)}
             </select>
@@ -97,9 +113,9 @@ export default function UtangTracker() {
             <article key={plan.id} className="rounded-3xl border border-surface-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-sm font-black text-surface-900">#{String(plan.order.orderNumber).replace(/^POS-/, '')}</p>
-                  <h3 className="mt-1 font-black text-surface-900">{plan.order.customerName || 'Guest'}</h3>
-                  {plan.order.customerPhone && <p className="text-xs text-surface-500">{plan.order.customerPhone}</p>}
+                  <p className="font-mono text-sm font-black text-surface-900">{plan.order ? `#${String(plan.order.orderNumber).replace(/^POS-/, '')}` : 'Manual account'}</p>
+                  <h3 className="mt-1 font-black text-surface-900">{plan.order?.customerName || plan.customerName || 'Guest'}</h3>
+                  {(plan.order?.customerPhone || plan.customerPhone) && <p className="text-xs text-surface-500">{plan.order?.customerPhone || plan.customerPhone}</p>}
                 </div>
                 <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${plan.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{plan.status}</span>
               </div>

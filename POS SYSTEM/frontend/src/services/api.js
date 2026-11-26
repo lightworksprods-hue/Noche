@@ -123,6 +123,7 @@ export const updateAdminOrderPayment = (id, paymentStatus, paymentMethod, paymen
 export const updateAdminOrderRefund = (id, refundStatus) => api.patch(`/admin/orders/${id}/refund`, { refundStatus });
 export const getAdminUtang = () => api.get('/admin/utang');
 export const createAdminUtang = (orderId, data) => api.post(`/admin/orders/${orderId}/utang`, data);
+export const createAdminManualUtang = (data) => api.post('/admin/utang/manual', data);
 export const recordAdminUtangPayment = (planId, data) => api.post(`/admin/utang/${planId}/payment`, data);
 export const getAdminProducts = () => api.get('/admin/products');
 export const createProduct = (data) => api.post('/admin/products', data);
