@@ -61,6 +61,7 @@ export function CartProvider({ children }) {
         image: product.image,
         stock: product.stock,
         pointsCost: product.pointsCost,
+        availabilitySchedule: product.availabilitySchedule || null,
         size: opts.size,
         flavor: opts.flavor,
         selectedAddons: opts.addons || [],
