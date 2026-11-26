@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +38,9 @@ export default function AdminDashboard() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [notificationCounts, setNotificationCounts] = useState({});
   const { joinRoom, leaveRoom, connected, onEvent } = useSocket();
+  const handleUnreadCountsChange = useCallback((counts) => {
+    setNotificationCounts(current => ({ ...current, ...counts }));
+  }, []);
   const featureLocks = summary?.branding?.adminFeatureLocks || {};
   const featureLabels = {
     overview: 'Overview',
@@ -310,7 +313,7 @@ export default function AdminDashboard() {
               <p className="text-sm font-bold text-surface-900">{user?.name}</p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-surface-500">{user?.role}</p>
             </div>
-            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} onUnreadCountsChange={counts => setNotificationCounts(current => ({ ...current, ...counts }))} />
+            <AdminNotifications userId={user?.id} activeTab={activeTab} onNavigate={setActiveTab} onUnreadCountsChange={handleUnreadCountsChange} />
             <button
               onClick={() => setShowLogoutConfirm(true)}
               aria-label="Log out"
