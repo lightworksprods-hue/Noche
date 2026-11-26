@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, Headset, Send, UserRound, X } from 'lucide-react';
-import { getChatConversation, getOrder, getOrderHistory, markChatRead, sendChatMessage } from '../services/api';
+import { getChatConversation, getOrder, getOrderHistory, getPublicTenant, markChatRead, sendChatMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 const FAQS = [
   { question: 'How do I place an order?', answer: 'Choose your products, select the available date and time, complete your contact details, then submit your payment.' },
@@ -23,6 +24,25 @@ const orderStatusLabel = status => ({
   cancelled: 'Order cancelled'
 }[status] || 'Order status is being updated');
 
+const getBotReply = message => {
+  const text = String(message || '').toLowerCase();
+  const isGreeting = /\b(hi|hello|hey|kamusta|kumusta)\b/.test(text);
+  const storeTopics = /\b(store|order|orders|payment|pay|price|cost|menu|product|food|lechon|schedule|date|pickup|pick up|delivery|deliver|cancel|refund|promo|available|availability|stock|contact|phone|email|hours|open|location|address|admin|support|book|booking)\b/.test(text);
+  if (!isGreeting && !storeTopics) return 'I can only help with this store, our menu, orders, payments, schedules, delivery, pickup, and customer support. Please ask me something related to the store.';
+  if (isGreeting) return 'Hi! I’m Ms. Suki. How can I help you today? You can choose one of the options below or ask me a question.';
+  if (text.includes('thank')) return 'You’re welcome! I’m here if you need anything else.';
+  if (text.includes('payment') || text.includes('pay')) return 'You can pay by Cash or QR Ph. A 50% downpayment option is also available for eligible orders.';
+  if (text.includes('schedule') || text.includes('date')) return 'I can help check your order schedule. Choose “Any updates on my order?” to select an active order.';
+  if (text.includes('admin') || text.includes('human')) return 'You can tap “Talk to an admin” below to request help from the store team.';
+  return 'I’m Ms. Suki, the store assistant. I can help with orders, payments, schedules, and order updates. Please choose an option below or tap “Talk to an admin.”';
+};
+
+const isOrderStatusRequest = message => {
+  const text = String(message || '').toLowerCase();
+  return (/(check|status|update|track|where|follow)/.test(text) && /\b(order|orders|booking)\b/.test(text)) ||
+    (/\b(order|orders|booking)\b/.test(text) && /(status|update|track|where)/.test(text));
+};
+
 function makeSessionId() {
   const existing = localStorage.getItem('pos_chat_session');
   if (existing) return existing;
@@ -34,7 +54,9 @@ function makeSessionId() {
 export default function CustomerChat() {
   const location = useLocation();
   const { user } = useAuth();
+  const { joinRoom, leaveRoom, onEvent } = useSocket();
   const sessionId = useMemo(makeSessionId, []);
+  const tenantSlug = new URLSearchParams(location.search).get('tenant') || 'project-million';
   const [open, setOpen] = useState(false);
   const [conversation, setConversation] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -44,6 +66,32 @@ export default function CustomerChat() {
   const [activeOrders, setActiveOrders] = useState([]);
   const [showOrderPicker, setShowOrderPicker] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [chatTenantId, setChatTenantId] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getPublicTenant(tenantSlug)
+      .then(response => {
+        if (active) setChatTenantId(response.data?.data?.id || null);
+      })
+      .catch(() => {
+        if (active) setChatTenantId(null);
+      });
+    return () => { active = false; };
+  }, [tenantSlug]);
+
+  useEffect(() => {
+    if (!chatTenantId) return undefined;
+    joinRoom(`chat-${sessionId}`, chatTenantId);
+    return () => leaveRoom(`chat-${sessionId}`, chatTenantId);
+  }, [chatTenantId, sessionId, joinRoom, leaveRoom]);
+
+  useEffect(() => onEvent('chat_update', payload => {
+    const updated = payload?.conversation;
+    if (!updated || updated.sessionId !== sessionId) return;
+    setConversation(updated);
+    setMessages(updated.messages || []);
+  }), [onEvent, sessionId]);
 
   const loadActiveOrders = async () => {
     setLoadingOrders(true);
@@ -126,6 +174,25 @@ export default function CustomerChat() {
       setConversation(data);
       setMessages(data.messages || []);
       setInput('');
+
+      const isFaqQuestion = FAQS.some(faq => faq.question.toLowerCase() === text.toLowerCase());
+      if (!escalate && data.status === 'bot' && isOrderStatusRequest(text)) {
+        setShowOrderPicker(true);
+        await loadActiveOrders();
+        setMessages(current => [...current, {
+          id: `order-picker-${Date.now()}`,
+          senderType: 'bot',
+          content: 'Sure! Please choose one of your active orders below so I can check the latest update.'
+        }]);
+        return;
+      }
+      if (!escalate && data.status === 'bot' && !isFaqQuestion) {
+        setMessages(current => [...current, {
+          id: `bot-${Date.now()}`,
+          senderType: 'bot',
+          content: getBotReply(text)
+        }]);
+      }
 
     } catch {
       setMessages(current => [...current, { id: `error-${Date.now()}`, senderType: 'bot', content: 'Sorry, support is temporarily unavailable. Please try again.' }]);
