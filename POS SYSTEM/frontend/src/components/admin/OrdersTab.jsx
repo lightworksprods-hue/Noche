@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getAdminOrders, updateAdminOrderStatus, updateAdminOrderPayment, updateAdminOrderRefund, updateAdminOrderSchedule } from '../../services/api';
+import { getAdminOrders, hardDeleteOrder, updateAdminOrderStatus, updateAdminOrderPayment, updateAdminOrderRefund, updateAdminOrderSchedule } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { AlertTriangle, CheckCircle, CircleAlert, MoreVertical, Trash2, XCircle } from 'lucide-react';
 import PaginationControls from './PaginationControls';
@@ -78,19 +78,24 @@ export default function OrdersTab() {
   const [confirmDelete, setConfirmDelete] = useState(null); // Stores { id, orderNumber } when modal is open
   const [confirmCancel, setConfirmCancel] = useState(null);
   const [paymentMessage, setPaymentMessage] = useState(null);
+  const [deletingOrderId, setDeletingOrderId] = useState(null);
+
+  const isFullPaymentOrder = (order) => order.paymentMode === 'full_payment' || (order.paymentMode === 'custom_payment' && Number(order.paymentAmount || 0) >= Number(order.total || 0));
 
   const handleHardDelete = async () => {
     if (!confirmDelete) return;
     const { id, orderNumber } = confirmDelete;
 
     try {
-      const { hardDeleteOrder } = await import('../../services/api');
+      setDeletingOrderId(id);
       await hardDeleteOrder(id);
       setConfirmDelete(null);
-      loadOrders();
+      await loadOrders();
     } catch (error) {
       console.error(error);
-      alert('Failed to delete order.');
+      alert(error.response?.data?.message || 'Failed to delete order. Please try again.');
+    } finally {
+      setDeletingOrderId(null);
     }
   };
 
@@ -128,7 +133,8 @@ export default function OrdersTab() {
 
   const handlePaymentDecision = async (order, paymentStatus) => {
     try {
-      const verifiedStatus = paymentStatus === 'paid' && order.paymentStatus === 'submitted' && order.paymentMode !== 'full_payment'
+      const fullPaymentSelected = isFullPaymentOrder(order);
+      const verifiedStatus = paymentStatus === 'paid' && order.paymentStatus === 'submitted' && !fullPaymentSelected
         ? 'partially_paid'
         : paymentStatus;
       await updateAdminOrderPayment(order.id, verifiedStatus);
@@ -173,16 +179,20 @@ export default function OrdersTab() {
             </p>
             <div className="flex gap-3">
               <button 
+                type="button"
                 onClick={() => setConfirmDelete(null)}
+                disabled={deletingOrderId !== null}
                 className="flex-1 px-6 py-4 rounded-2xl bg-surface-100 text-surface-600 font-black uppercase tracking-widest text-xs hover:bg-surface-200 transition-all"
               >
                 Cancel
               </button>
               <button 
+                type="button"
                 onClick={handleHardDelete}
+                disabled={deletingOrderId !== null}
                 className="flex-1 px-6 py-4 rounded-2xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
               >
-                Confirm Delete
+                {deletingOrderId !== null ? 'Deleting...' : 'Confirm Delete'}
               </button>
             </div>
           </div>
@@ -360,7 +370,7 @@ export default function OrdersTab() {
                     {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
                       <div className="mb-2 flex justify-end gap-2">
                         <button onClick={() => handlePaymentDecision(order, 'rejected')} className="rounded-lg bg-red-50 px-2 py-1 text-[10px] font-black uppercase text-red-600 hover:bg-red-100">Reject</button>
-                        <button onClick={() => handlePaymentDecision(order, 'paid')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">{order.paymentMode === 'full_payment' ? 'Confirm Full Payment' : 'Confirm 50% Payment'}</button>
+                        <button onClick={() => handlePaymentDecision(order, 'paid')} className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100">{isFullPaymentOrder(order) ? 'Confirm Full Payment' : order.paymentMode === 'custom_payment' ? `Confirm ${formatCurrency(order.paymentAmount)} Payment` : 'Confirm 50% Payment'}</button>
                       </div>
                     )}
                     {order.paymentStatus === 'partially_paid' && (
@@ -389,20 +399,6 @@ export default function OrdersTab() {
                           <XCircle className="h-3.5 w-3.5" />
                           Cancel Order
                         </button>
-                        <select
-                          value={order.status}
-                          onChange={e => handleStatusChange(order, e.target.value)}
-                          className="rounded-lg border border-surface-200 bg-white px-2 py-1 text-xs font-bold text-surface-700"
-                          aria-label={`Update order ${order.orderNumber} status`}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="booked">Booked</option>
-                          <option value="confirmed">Accepted</option>
-                          <option value="preparing">Booked</option>
-                          <option value="ready">Ready</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
                       </div>
                     )}
                     {order.status === 'cancelled' && (
@@ -514,7 +510,7 @@ export default function OrdersTab() {
               {(order.paymentMethod === 'qrph' || order.paymentMethod === 'cash') && order.paymentStatus === 'submitted' && (
                 <div className="col-span-2 flex gap-2">
                   <button onClick={() => handlePaymentDecision(order, 'rejected')} className="flex-1 rounded-xl bg-red-50 py-2 text-[10px] font-black uppercase text-red-600">Reject Payment</button>
-                  <button onClick={() => handlePaymentDecision(order, 'paid')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">{order.paymentMode === 'full_payment' ? 'Confirm Full Payment' : 'Confirm 50% Payment'}</button>
+                  <button onClick={() => handlePaymentDecision(order, 'paid')} className="flex-1 rounded-xl bg-emerald-50 py-2 text-[10px] font-black uppercase text-emerald-600">{isFullPaymentOrder(order) ? 'Confirm Full Payment' : order.paymentMode === 'custom_payment' ? `Confirm ${formatCurrency(order.paymentAmount)} Payment` : 'Confirm 50% Payment'}</button>
                 </div>
               )}
               {order.paymentStatus === 'partially_paid' && (

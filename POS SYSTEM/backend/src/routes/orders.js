@@ -50,8 +50,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Choose Cash or QR Ph as your payment method.' });
     }
 
-    if (!isCounterOrder && !isPointsOrder && !['downpayment', 'full_payment'].includes(paymentMode)) {
-      return res.status(400).json({ success: false, message: 'Choose either a 50% downpayment or full payment.' });
+    if (!isCounterOrder && !isPointsOrder && !['downpayment', 'full_payment', 'custom_payment'].includes(paymentMode)) {
+      return res.status(400).json({ success: false, message: 'Choose 50%, full payment, or a custom payment amount.' });
     }
 
     if (!isCounterOrder && !isPointsOrder && paymentMethod === 'qrph' && !/^\d{4}$/.test(String(paymentReference || ''))) {
@@ -414,7 +414,14 @@ router.post('/', async (req, res) => {
     const initialStatus = 'pending';
     const confirmedAt = null;
     const submittedPayment = !isCounterOrder && !isPointsOrder;
-    const paymentDue = paymentMode === 'full_payment' ? total : round2(total * 0.5);
+    const paymentDue = paymentMode === 'full_payment'
+      ? total
+      : paymentMode === 'custom_payment'
+        ? round2(Number(paymentAmount))
+        : round2(total * 0.5);
+    if (!isCounterOrder && !isPointsOrder && (!Number.isFinite(paymentDue) || paymentDue <= 0 || paymentDue > total)) {
+      return res.status(400).json({ success: false, message: `Enter a payment amount greater than zero and no more than the total of ₱${total.toFixed(2)}.` });
+    }
 
     const order = await prisma.order.create({
       data: {
@@ -428,6 +435,7 @@ router.post('/', async (req, res) => {
         orderType: orderType || 'dine_in',
         paymentMethod: paymentMethod || 'cash',
         paymentMode: paymentMode || 'downpayment',
+        paymentAmount: submittedPayment ? paymentDue : null,
         status: initialStatus,
         paymentStatus: submittedPayment ? 'submitted' : 'paid',
         confirmedAt,
@@ -443,7 +451,7 @@ router.post('/', async (req, res) => {
         deliveryFee: deliveryFee ? parseFloat(deliveryFee) : 0,
         scheduledFor: requestedSchedule,
         paymentReference: paymentReference || null,
-        notes: (notes ? notes : '') + (appliedPromoId ? ` (Promo: ${promoCode})` : '') + (submittedPayment ? ` (${paymentMode === 'full_payment' ? 'Full payment' : '50% downpayment'} submitted: ${paymentDue.toFixed(2)})` : ''),
+        notes: (notes ? notes : '') + (appliedPromoId ? ` (Promo: ${promoCode})` : '') + (submittedPayment ? ` (${paymentMode === 'full_payment' ? 'Full payment' : paymentMode === 'custom_payment' ? 'Custom payment' : '50% downpayment'} submitted: ${paymentDue.toFixed(2)})` : ''),
         items: { create: orderItems }
       },
       include: {

@@ -144,6 +144,7 @@ export default function Checkout() {
   const [customerPhone, setCustomerPhone] = useState(() => savedContact?.phone || user?.phone || '');
   const [customerEmail, setCustomerEmail] = useState(() => savedContact?.email || user?.email || '');
   const [paymentMode, setPaymentMode] = useState('downpayment');
+  const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [orderType, setOrderType] = useState('pickup');
   const [scheduledDate, setScheduledDate] = useState(() => {
     const date = new Date();
@@ -193,7 +194,11 @@ export default function Checkout() {
   const tax = 0;
   let total = roundMoney(subtotal + deliveryFee - promoDiscount);
   if (total < 0) total = 0;
-  const paymentDue = paymentMode === 'full_payment' ? total : roundMoney(total * 0.5);
+  const paymentDue = paymentMode === 'full_payment'
+    ? total
+    : paymentMode === 'custom_payment'
+      ? roundMoney(Number(customPaymentAmount) || 0)
+      : roundMoney(total * 0.5);
   const qrCode = branding?.gcashQr || branding?.mayaQr;
 
   const handleApplyPromo = async () => {
@@ -322,7 +327,7 @@ export default function Checkout() {
         deliveryFee: orderType === 'delivery' ? deliveryInfo.fee : undefined,
         scheduledFor,
         paymentReference: paymentMethod === 'qrph' ? paymentReference : undefined,
-        paymentAmount: paymentMethod === 'qrph' ? paymentDue : undefined,
+        paymentAmount: !isFullRedemption ? paymentDue : undefined,
         promoCode: appliedPromo ? appliedPromo.code : undefined
       });
       const order = res.data.data;
@@ -508,7 +513,8 @@ export default function Checkout() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { id: 'downpayment', label: '50% Downpayment' },
-                { id: 'full_payment', label: 'Pay in Full' }
+                { id: 'full_payment', label: 'Pay in Full' },
+                { id: 'custom_payment', label: 'Custom Amount' }
               ].map(option => (
                 <button key={option.id} type="button" onClick={() => setPaymentMode(option.id)}
                   className={`flex min-h-14 items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition-all ${paymentMode === option.id ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm' : 'border-surface-200 bg-white text-surface-600 hover:border-primary-300'}`}>
@@ -519,6 +525,16 @@ export default function Checkout() {
                 </button>
               ))}
             </div>
+            {paymentMode === 'custom_payment' && (
+              <div className="mt-4 rounded-2xl border border-primary-100 bg-primary-50 p-4">
+                <label className="block text-xs font-black uppercase tracking-wide text-primary-800">How much will you pay now?</label>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-lg font-black text-primary-700">₱</span>
+                  <input type="number" min="0.01" max={total} step="0.01" value={customPaymentAmount} onChange={e => setCustomPaymentAmount(e.target.value)} placeholder={`Maximum ${formatCurrency(total)}`} className="input-field bg-white" required />
+                </div>
+                <p className="mt-1.5 text-[11px] font-medium text-primary-700">Enter any amount up to the order total. The remaining balance will be tracked.</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -761,14 +777,15 @@ export default function Checkout() {
             </div>
             {!isFullRedemption && (
               <div className="flex justify-between text-sm font-bold text-primary-600">
-                <span>Due now ({paymentMode === 'full_payment' ? 'full payment' : '50% downpayment'})</span><span>{formatCurrency(paymentDue)}</span>
+                <span>Due now ({paymentMode === 'full_payment' ? 'full payment' : paymentMode === 'custom_payment' ? 'custom payment' : '50% downpayment'})</span><span>{formatCurrency(paymentDue)}</span>
               </div>
             )}
           </div>
         </div>
 
         {(() => {
-          const isDisabled = submitting || customerName.trim().length < 2 || !/^09\d{9}$/.test(customerPhone) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) || (totalPointsCost > 0 && hasInsufficientPoints) || (!isFullRedemption && paymentMethod === 'qrph' && (!qrCode || !/^\d{4}$/.test(paymentReference))) || (orderType === 'delivery' && !deliveryInfo.address);
+          const isCustomAmountInvalid = paymentMode === 'custom_payment' && (!paymentDue || paymentDue > total);
+          const isDisabled = submitting || customerName.trim().length < 2 || !/^09\d{9}$/.test(customerPhone) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) || (totalPointsCost > 0 && hasInsufficientPoints) || isCustomAmountInvalid || (!isFullRedemption && paymentMethod === 'qrph' && (!qrCode || !/^\d{4}$/.test(paymentReference))) || (orderType === 'delivery' && !deliveryInfo.address);
           return (
             <button 
               type="submit" 

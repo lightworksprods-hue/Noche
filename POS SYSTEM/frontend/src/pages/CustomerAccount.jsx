@@ -140,8 +140,8 @@ export default function CustomerAccount() {
 
   const getPaymentLabel = (paymentStatus, paymentMode) => {
     if (paymentStatus === 'paid') return 'Fully Paid';
-    if (paymentStatus === 'partially_paid') return 'Downpayment Paid';
-    if (paymentStatus === 'submitted') return paymentMode === 'full_payment' ? 'Full Payment Under Review' : 'Downpayment Under Review';
+    if (paymentStatus === 'partially_paid') return paymentMode === 'custom_payment' ? 'Custom Payment Paid' : 'Downpayment Paid';
+    if (paymentStatus === 'submitted') return paymentMode === 'full_payment' ? 'Full Payment Under Review' : paymentMode === 'custom_payment' ? 'Custom Payment Under Review' : 'Downpayment Under Review';
     if (paymentStatus === 'rejected') return 'Payment Rejected';
     return null;
   };

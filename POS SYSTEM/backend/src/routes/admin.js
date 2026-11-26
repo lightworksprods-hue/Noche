@@ -293,7 +293,9 @@ router.post('/orders/:id/utang', authenticate, authorize('admin'), async (req, r
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenantId: req.tenantId } });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
-    const initialPaid = order.paymentStatus === 'partially_paid' ? Number(order.total) * 0.5 : order.paymentStatus === 'paid' ? Number(order.total) : 0;
+    const initialPaid = order.paymentStatus === 'partially_paid'
+      ? Number(order.paymentAmount || Number(order.total) * 0.5)
+      : order.paymentStatus === 'paid' ? Number(order.total) : 0;
     const balance = Math.max(Number(order.total) - initialPaid, 0);
     if (balance <= 0) return res.status(400).json({ success: false, message: 'This order has no remaining balance.' });
 
@@ -536,6 +538,7 @@ router.patch('/orders/:id/payment', authenticate, authorize('admin'), async (req
         ...(verifyingInitialPayment && paymentStatus !== 'rejected' ? { status: 'booked', confirmedAt: new Date() } : {}),
         ...(verifyingInitialPayment && paymentStatus !== 'rejected' ? { paymentVerifiedAt: new Date() } : {}),
         ...(paymentStatus === 'paid' ? { fullyPaidAt: new Date() } : {}),
+        ...(paymentStatus === 'paid' ? { paymentAmount: Number(order.total) } : {}),
         ...(paymentMethod ? { paymentMethod } : {}),
         ...(paymentReference ? { paymentReference: String(paymentReference).slice(-4) } : {})
       },
