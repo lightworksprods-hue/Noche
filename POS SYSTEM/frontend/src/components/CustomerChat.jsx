@@ -57,6 +57,15 @@ function makeSessionId() {
   return value;
 }
 
+// Automatic bot replies are intentionally handled in the browser, so they are
+// not part of the conversation returned by the API. Keep them when a socket or
+// polling refresh replaces the server-backed messages.
+const isLocalChatMessage = message => String(message?.id || '').startsWith('bot-') ||
+  String(message?.id || '').startsWith('order-picker-') ||
+  String(message?.id || '').startsWith('selected-order-') ||
+  String(message?.id || '').startsWith('status-') ||
+  String(message?.id || '').startsWith('error-');
+
 export default function CustomerChat() {
   const location = useLocation();
   const { user } = useAuth();
@@ -74,6 +83,15 @@ export default function CustomerChat() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [chatTenantId, setChatTenantId] = useState(null);
   const [adminSupportAvailable, setAdminSupportAvailable] = useState(isAdminSupportAvailable);
+
+  const mergeMessages = incomingMessages => {
+    const serverMessages = incomingMessages || [];
+    setMessages(current => {
+      const serverMessageIds = new Set(serverMessages.map(message => message.id));
+      const localMessages = current.filter(message => isLocalChatMessage(message) && !serverMessageIds.has(message.id));
+      return [...serverMessages, ...localMessages];
+    });
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setAdminSupportAvailable(isAdminSupportAvailable()), 60000);
@@ -102,7 +120,7 @@ export default function CustomerChat() {
     const updated = payload?.conversation;
     if (!updated || updated.sessionId !== sessionId) return;
     setConversation(updated);
-    setMessages(updated.messages || []);
+    mergeMessages(updated.messages);
   }), [onEvent, sessionId]);
 
   const loadActiveOrders = async () => {
@@ -145,7 +163,7 @@ export default function CustomerChat() {
       const data = response.data.data;
       if (data) {
         setConversation(data);
-        setMessages(data.messages || []);
+        mergeMessages(data.messages);
       }
     } catch {
       // The bot remains available even if the support service is temporarily offline.
@@ -184,7 +202,7 @@ export default function CustomerChat() {
       });
       const data = response.data.data;
       setConversation(data);
-      setMessages(data.messages || []);
+      mergeMessages(data.messages);
       setInput('');
 
       const isFaqQuestion = FAQS.some(faq => faq.question.toLowerCase() === text.toLowerCase());
