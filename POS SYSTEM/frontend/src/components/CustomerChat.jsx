@@ -73,6 +73,14 @@ const isLocalChatMessage = message => String(message?.id || '').startsWith('bot-
   String(message?.id || '').startsWith('status-') ||
   String(message?.id || '').startsWith('error-');
 
+const sortChatMessages = messages => {
+  const fallbackBase = Date.now();
+  return messages.map((message, index) => ({
+    ...message,
+    createdAt: message.createdAt || new Date(fallbackBase + index).toISOString()
+  })).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+};
+
 export default function CustomerChat() {
   const location = useLocation();
   const { user } = useAuth();
@@ -96,12 +104,9 @@ export default function CustomerChat() {
     const serverMessages = incomingMessages || [];
     setMessages(current => {
       const serverMessageIds = new Set(serverMessages.map(message => message.id));
-      const localMessages = current.filter(message => isLocalChatMessage(message) && !serverMessageIds.has(message.id));
-      return [...serverMessages, ...localMessages].sort((a, b) => {
-        const aTime = new Date(a.createdAt || 0).getTime() || Number(a.clientOrder || 0);
-        const bTime = new Date(b.createdAt || 0).getTime() || Number(b.clientOrder || 0);
-        return aTime - bTime;
-      });
+      const localMessages = current
+        .filter(message => isLocalChatMessage(message) && !serverMessageIds.has(message.id))
+      return sortChatMessages([...serverMessages, ...localMessages]);
     });
   };
 
@@ -278,6 +283,8 @@ export default function CustomerChat() {
     ]);
   };
 
+  const orderedMessages = sortChatMessages(messages);
+
   if (location.pathname === '/' || location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
 
   return (
@@ -297,7 +304,7 @@ export default function CustomerChat() {
                 {FAQS.map(faq => <button key={faq.question} type="button" onClick={() => askFaq(faq)} disabled={sending} className="block w-full rounded-xl border border-primary-100 bg-white px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-50">{faq.question}</button>)}
               </div>
             )}
-            {messages.map(message => (
+            {orderedMessages.map(message => (
               <div key={message.id} className={`flex ${message.senderType === 'customer' ? 'justify-end' : 'justify-start'}`}>
                 {message.senderType === 'admin' && <div className="mr-2 mt-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700"><UserRound className="h-4 w-4" aria-hidden="true" /></div>}
                 <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${message.senderType === 'customer' ? 'rounded-br-sm bg-primary-500 text-white' : 'rounded-bl-sm bg-white text-surface-700'}`}>
