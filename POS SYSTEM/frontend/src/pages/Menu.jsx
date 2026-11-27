@@ -46,11 +46,10 @@ const formatAvailabilityDate = entry => {
   return `${dateLabel}${timeLabel}`;
 };
 
-const getAvailabilityLabel = product => {
+const getAvailabilityLabels = product => {
   const dates = product?.availabilitySchedule?.dates;
-  if (!Array.isArray(dates) || !dates.length) return null;
-  const firstDate = formatAvailabilityDate(dates[0]);
-  return dates.length > 1 ? `${firstDate} + ${dates.length - 1} more date${dates.length > 2 ? 's' : ''}` : firstDate;
+  if (!Array.isArray(dates)) return [];
+  return dates.map(formatAvailabilityDate).filter(Boolean);
 };
 
 const getOptimizedImageUrl = (imageUrl) => {
@@ -785,10 +784,10 @@ export default function Menu() {
                   <button
                     key={product.id}
                     onClick={() => handleProductClick(product)}
-                    className={`bg-white border border-surface-200/50 rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 text-left overflow-hidden group flex flex-row md:flex-col h-[130px] md:h-auto ${(!product.available || product.stock <= 0) ? 'opacity-75 grayscale-[0.5] cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
+                    className={`bg-white border border-surface-200/50 rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 text-left overflow-hidden group flex flex-col h-auto ${(!product.available || product.stock <= 0) ? 'opacity-75 grayscale-[0.5] cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
                     disabled={!product.available || product.stock <= 0}
                   >
-                    <div className="w-[130px] h-full md:w-full md:h-48 flex-shrink-0 relative overflow-hidden bg-surface-100">
+                    <div className="w-full h-48 flex-shrink-0 relative overflow-hidden bg-surface-100">
                       {product.image ? (
                         <img
                           src={getOptimizedImageUrl(product.image)}
@@ -849,7 +848,12 @@ export default function Menu() {
                     <div className="p-3 md:p-5 flex flex-col flex-1 w-full bg-white overflow-hidden">
                       <h3 className="font-heading font-bold text-surface-900 text-[15px] md:text-xl mb-0.5 md:mb-1 line-clamp-2 md:line-clamp-1 leading-tight">{product.name}</h3>
                       {product.isPreOrder && <span className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-blue-700">Available as pre-order</span>}
-                      {getAvailabilityLabel(product) && <span className="mb-1 block text-[10px] font-bold leading-snug text-blue-700">Available: {getAvailabilityLabel(product)}</span>}
+                      {getAvailabilityLabels(product).length > 0 && (
+                        <div className="mb-1 space-y-0.5 text-[10px] font-bold leading-snug text-blue-700">
+                          <span className="block">Available:</span>
+                          {getAvailabilityLabels(product).map((label, index) => <span key={`${product.id}-availability-${index}`} className="block">{label}</span>)}
+                        </div>
+                      )}
                       {product.stock > 0 && product.stock < 5 && (
                         <span className="inline-flex items-center gap-1 text-[10px] md:text-[11px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mb-1 animate-pulse uppercase tracking-wide">
                           🔥 Only {product.stock} left!
@@ -989,6 +993,13 @@ export default function Menu() {
                       </span>
                     );
                   })}
+                </div>
+              )}
+
+              {getAvailabilityLabels(selectedProduct).length > 0 && (
+                <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold leading-relaxed text-blue-700">
+                  <p className="mb-1 uppercase tracking-wide">Available on:</p>
+                  {getAvailabilityLabels(selectedProduct).map((label, index) => <p key={`modal-availability-${index}`}>{label}</p>)}
                 </div>
               )}
 
