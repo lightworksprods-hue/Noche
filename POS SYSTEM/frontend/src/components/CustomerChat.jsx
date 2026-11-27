@@ -30,11 +30,17 @@ const isAdminSupportAvailable = () => {
   return minutes >= 480 && minutes < 1200;
 };
 
-const getBotReply = message => {
+const getBotReply = (message, store = {}) => {
   const text = String(message || '').toLowerCase();
   const isGreeting = /\b(hi|hello|hey|kamusta|kumusta)\b/.test(text);
   const storeTopics = /\b(store|order|orders|payment|pay|price|cost|menu|product|food|lechon|schedule|date|pickup|pick up|delivery|deliver|cancel|refund|promo|available|availability|stock|contact|phone|email|hours|open|location|address|admin|support|book|booking)\b/.test(text);
   if (!isGreeting && !storeTopics) return 'I can only help with this store, our menu, orders, payments, schedules, delivery, pickup, and customer support. Please ask me something related to the store.';
+  if (/\b(where|location|located|address)\b/.test(text)) {
+    if (store.storeLat && store.storeLng) return `${store.name || 'Our store'} is located at the store pin on Google Maps: https://www.google.com/maps/search/?api=1&query=${store.storeLat},${store.storeLng}`;
+    return `I’m sorry, ${store.name || 'the store'}’s location has not been added yet. Please tap “Talk to an admin” for directions.`;
+  }
+  if (/\b(hours|open|closing|closed)\b/.test(text)) return store.storeClosed ? `${store.name || 'The store'} is currently closed. Please check back later or contact an admin.` : `${store.name || 'The store'} is currently open. Admin support is available from 8:00 AM to 8:00 PM.`;
+  if (/\b(what('?s| is) the store|store name|who are you|about the store)\b/.test(text)) return `${store.name || 'This store'} is served by Ms. Suki, your store assistant.${store.description ? ` ${store.description}` : ''}`;
   if (isGreeting) return 'Hi! I’m Ms. Suki. How can I help you today? You can choose one of the options below or ask me a question.';
   if (text.includes('thank')) return 'You’re welcome! I’m here if you need anything else.';
   if (text.includes('payment') || text.includes('pay')) return 'You can pay by Cash or QR Ph. A 50% downpayment option is also available for eligible orders.';
@@ -82,6 +88,7 @@ export default function CustomerChat() {
   const [showOrderPicker, setShowOrderPicker] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [chatTenantId, setChatTenantId] = useState(null);
+  const [storeInfo, setStoreInfo] = useState({});
   const [adminSupportAvailable, setAdminSupportAvailable] = useState(isAdminSupportAvailable);
 
   const mergeMessages = incomingMessages => {
@@ -89,7 +96,11 @@ export default function CustomerChat() {
     setMessages(current => {
       const serverMessageIds = new Set(serverMessages.map(message => message.id));
       const localMessages = current.filter(message => isLocalChatMessage(message) && !serverMessageIds.has(message.id));
-      return [...serverMessages, ...localMessages];
+      return [...serverMessages, ...localMessages].sort((a, b) => {
+        const aTime = new Date(a.createdAt || 0).getTime() || Number(a.clientOrder || 0);
+        const bTime = new Date(b.createdAt || 0).getTime() || Number(b.clientOrder || 0);
+        return aTime - bTime;
+      });
     });
   };
 
@@ -102,7 +113,11 @@ export default function CustomerChat() {
     let active = true;
     getPublicTenant(tenantSlug)
       .then(response => {
-        if (active) setChatTenantId(response.data?.data?.id || null);
+        if (active) {
+          const tenant = response.data?.data || {};
+          setChatTenantId(tenant.id || null);
+          setStoreInfo({ name: tenant.name, description: tenant.landing_description, storeLat: tenant.storeLat, storeLng: tenant.storeLng, storeClosed: tenant.storeClosed });
+        }
       })
       .catch(() => {
         if (active) setChatTenantId(null);
@@ -213,7 +228,8 @@ export default function CustomerChat() {
         setMessages(current => [...current, {
           id: `order-picker-${Date.now()}`,
           senderType: 'bot',
-          content: 'Sure! Please choose one of your active orders below so I can check the latest update.'
+          content: 'Sure! Please choose one of your active orders below so I can check the latest update.',
+          createdAt: new Date().toISOString()
         }]);
         return;
       }
@@ -221,12 +237,13 @@ export default function CustomerChat() {
         setMessages(current => [...current, {
           id: `bot-${Date.now()}`,
           senderType: 'bot',
-          content: getBotReply(text)
+          content: getBotReply(text, storeInfo),
+          createdAt: new Date().toISOString()
         }]);
       }
 
     } catch {
-      setMessages(current => [...current, { id: `error-${Date.now()}`, senderType: 'bot', content: 'Sorry, support is temporarily unavailable. Please try again.' }]);
+      setMessages(current => [...current, { id: `error-${Date.now()}`, senderType: 'bot', content: 'Sorry, support is temporarily unavailable. Please try again.', createdAt: new Date().toISOString() }]);
     } finally {
       setSending(false);
     }
@@ -239,7 +256,7 @@ export default function CustomerChat() {
       return;
     }
     await send(faq.question);
-    setMessages(current => [...current, { id: `bot-${Date.now()}`, senderType: 'bot', content: faq.answer === 'order-status' ? 'Please enter your 5-digit order number, for example 61449.' : faq.answer }]);
+    setMessages(current => [...current, { id: `bot-${Date.now()}`, senderType: 'bot', content: faq.answer === 'order-status' ? 'Please enter your 5-digit order number, for example 61449.' : faq.answer, createdAt: new Date().toISOString() }]);
   };
 
   const checkOrderStatus = async (order) => {
@@ -250,8 +267,8 @@ export default function CustomerChat() {
         ? ' The requested schedule was confirmed.'
         : '';
     setMessages(current => [...current,
-      { id: `selected-order-${Date.now()}`, senderType: 'customer', content: `Check order update: #${order.orderNumber}` },
-      { id: `status-${Date.now()}`, senderType: 'bot', content: `Order #${order.orderNumber}: ${orderStatusLabel(order.status)}. Payment: ${order.paymentStatus || 'unpaid'}.${schedule}` }
+      { id: `selected-order-${Date.now()}`, senderType: 'customer', content: `Check order update: #${order.orderNumber}`, createdAt: new Date().toISOString() },
+      { id: `status-${Date.now()}`, senderType: 'bot', content: `Order #${order.orderNumber}: ${orderStatusLabel(order.status)}. Payment: ${order.paymentStatus || 'unpaid'}.${schedule}`, createdAt: new Date(Date.now() + 1).toISOString() }
     ]);
   };
 
