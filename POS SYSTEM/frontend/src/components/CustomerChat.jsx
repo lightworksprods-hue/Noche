@@ -352,6 +352,7 @@ export default function CustomerChat() {
             {orderedMessages.map(message => (
               <div key={message.id} className={`flex ${message.senderType === 'customer' ? 'justify-end' : 'justify-start'}`}>
                 {message.senderType === 'admin' && <div className="mr-2 mt-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700"><UserRound className="h-4 w-4" aria-hidden="true" /></div>}
+                {message.senderType === 'bot' && <img src="/ms.suki.png" alt="Ms. Suki" className="mr-2 mt-auto h-7 w-7 shrink-0 rounded-xl bg-white object-cover ring-1 ring-primary-100" />}
                 <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${message.senderType === 'customer' ? 'rounded-br-sm bg-primary-500 text-white' : 'rounded-bl-sm bg-white text-surface-700'}`}>
                   {message.senderType === 'admin' && <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-primary-600">Admin</p>}
                   {message.content}

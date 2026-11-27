@@ -23,6 +23,15 @@ const conversationInclude = {
   customer: { select: { id: true, name: true, email: true } }
 };
 
+function adminConversationView(conversation) {
+  if (!conversation) return conversation;
+  const acceptedAt = conversation.adminAcceptedAt ? new Date(conversation.adminAcceptedAt).getTime() : null;
+  const messages = acceptedAt
+    ? (conversation.messages || []).filter(message => new Date(message.createdAt).getTime() >= acceptedAt)
+    : (conversation.messages || []).filter(message => message.senderType === 'customer' && /talk to an admin/i.test(message.content));
+  return { ...conversation, messages };
+}
+
 // Customer chat endpoints are public so guests can request support.
 router.get('/conversation', async (req, res) => {
   try {
@@ -120,7 +129,7 @@ router.get('/admin/conversations', authenticate, authorize('admin'), async (req,
       include: conversationInclude,
       orderBy: [{ unreadForAdmin: 'desc' }, { updatedAt: 'desc' }]
     });
-    res.json({ success: true, data: conversations });
+    res.json({ success: true, data: conversations.map(adminConversationView) });
   } catch (error) {
     console.error('Admin chat list error:', error);
     res.status(500).json({ success: false, message: 'Failed to load customer chats.' });
@@ -133,13 +142,12 @@ router.patch('/admin/conversations/:id/accept', authenticate, authorize('admin')
     if (!conversation) return res.status(404).json({ success: false, message: 'Conversation not found.' });
     const updated = await prisma.chatConversation.update({
       where: { id: conversation.id },
-      data: { status: 'open', unreadForAdmin: false, unreadForCustomer: true },
+      data: { status: 'open', adminAcceptedAt: new Date(), unreadForAdmin: false, unreadForCustomer: true },
       include: conversationInclude
     });
-    const payload = { conversation: updated, eventType: 'chat_accepted' };
-    req.io?.to(`tenant-${req.tenantId}-admin`).emit('chat_update', payload);
-    req.io?.to(`tenant-${req.tenantId}-chat-${conversation.sessionId}`).emit('chat_update', payload);
-    res.json({ success: true, data: updated });
+    req.io?.to(`tenant-${req.tenantId}-admin`).emit('chat_update', { conversation: adminConversationView(updated), eventType: 'chat_accepted' });
+    req.io?.to(`tenant-${req.tenantId}-chat-${conversation.sessionId}`).emit('chat_update', { conversation: updated, eventType: 'chat_accepted' });
+    res.json({ success: true, data: adminConversationView(updated) });
   } catch (error) {
     console.error('Admin chat accept error:', error);
     res.status(500).json({ success: false, message: 'Failed to accept chat request.' });
@@ -160,10 +168,9 @@ router.post('/admin/conversations/:id/messages', authenticate, authorize('admin'
       data: { status: 'open', unreadForAdmin: false, unreadForCustomer: true },
       include: conversationInclude
     });
-    const payload = { conversation: updated, message };
-    req.io?.to(`tenant-${req.tenantId}-admin`).emit('chat_update', payload);
-    req.io?.to(`tenant-${req.tenantId}-chat-${conversation.sessionId}`).emit('chat_update', payload);
-    res.json({ success: true, data: updated });
+    req.io?.to(`tenant-${req.tenantId}-admin`).emit('chat_update', { conversation: adminConversationView(updated), message });
+    req.io?.to(`tenant-${req.tenantId}-chat-${conversation.sessionId}`).emit('chat_update', { conversation: updated, message });
+    res.json({ success: true, data: adminConversationView(updated) });
   } catch (error) {
     console.error('Admin chat reply error:', error);
     res.status(500).json({ success: false, message: 'Failed to send reply.' });

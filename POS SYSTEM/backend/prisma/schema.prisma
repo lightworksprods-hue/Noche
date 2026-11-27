@@ -390,6 +390,7 @@ model ChatConversation {
   status          String   @default("bot") // bot, open, closed
   unreadForAdmin  Boolean  @default(false)
   unreadForCustomer Boolean @default(false)
+  adminAcceptedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
