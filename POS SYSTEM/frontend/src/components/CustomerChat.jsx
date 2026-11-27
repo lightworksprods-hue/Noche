@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, Headset, Send, UserRound, X } from 'lucide-react';
 import { getChatConversation, getOrder, getOrderHistory, getPublicTenant, markChatRead, sendChatMessage } from '../services/api';
@@ -104,6 +104,9 @@ export default function CustomerChat() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [chatTenantId, setChatTenantId] = useState(null);
   const [storeInfo, setStoreInfo] = useState({});
+  const chatBodyRef = useRef(null);
+  const shouldScrollToBottomRef = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [adminSupportAvailable, setAdminSupportAvailable] = useState(isAdminSupportAvailable);
 
   const mergeMessages = incomingMessages => {
@@ -217,6 +220,7 @@ export default function CustomerChat() {
   const send = async (content, escalate = false) => {
     const text = String(content || '').trim();
     if (!text || sending) return;
+    shouldScrollToBottomRef.current = true;
     setSending(true);
     try {
       const response = await sendChatMessage({
@@ -246,17 +250,20 @@ export default function CustomerChat() {
         return;
       }
       if (!escalate && isBotConversation && !isFaqQuestion) {
-        setMessages(current => [...current, {
-          id: `bot-${Date.now()}`,
-          senderType: 'bot',
-          content: getBotReply(text, storeInfo),
-          link: /\b(where|location|located|address)\b/.test(text)
-            ? { href: STORE_MAP_URL, label: 'Open store location in Google Maps' }
-            : /\b(facebook|fb|social media)\b/.test(text)
-              ? { href: STORE_FACEBOOK_URL, label: 'Visit the store Facebook page' }
-              : undefined,
-          createdAt: new Date().toISOString()
-        }]);
+        setMessages(current => {
+          const latestTime = Math.max(Date.now(), ...current.map(message => new Date(message.createdAt || 0).getTime() || 0));
+          return [...current, {
+            id: `bot-${Date.now()}`,
+            senderType: 'bot',
+            content: getBotReply(text, storeInfo),
+            link: /\b(where|location|located|address)\b/.test(text)
+              ? { href: STORE_MAP_URL, label: 'Open store location in Google Maps' }
+              : /\b(facebook|fb|social media)\b/.test(text)
+                ? { href: STORE_FACEBOOK_URL, label: 'Visit the store Facebook page' }
+                : undefined,
+            createdAt: new Date(latestTime + 1).toISOString()
+          }];
+        });
       }
 
     } catch {
@@ -273,10 +280,14 @@ export default function CustomerChat() {
       return;
     }
     await send(faq.question);
-    setMessages(current => [...current, { id: `bot-${Date.now()}`, senderType: 'bot', content: faq.answer === 'order-status' ? 'Please enter your 5-digit order number, for example 61449.' : faq.answer, createdAt: new Date().toISOString() }]);
+    setMessages(current => {
+      const latestTime = Math.max(Date.now(), ...current.map(message => new Date(message.createdAt || 0).getTime() || 0));
+      return [...current, { id: `bot-${Date.now()}`, senderType: 'bot', content: faq.answer === 'order-status' ? 'Please enter your 5-digit order number, for example 61449.' : faq.answer, createdAt: new Date(latestTime + 1).toISOString() }];
+    });
   };
 
   const checkOrderStatus = async (order) => {
+    shouldScrollToBottomRef.current = true;
     setShowOrderPicker(false);
     const schedule = order.scheduleStatus === 'rejected'
       ? ' The requested schedule was rejected.'
@@ -288,6 +299,26 @@ export default function CustomerChat() {
       { id: `status-${Date.now()}`, senderType: 'bot', content: `Order #${order.orderNumber}: ${orderStatusLabel(order.status)}. Payment: ${order.paymentStatus || 'unpaid'}.${schedule}`, createdAt: new Date(Date.now() + 1).toISOString() }
     ]);
   };
+
+  const scrollConversationToBottom = (behavior = 'smooth') => {
+    const body = chatBodyRef.current;
+    if (!body) return;
+    body.scrollTo({ top: body.scrollHeight, behavior });
+    setShowScrollToBottom(false);
+  };
+
+  useEffect(() => {
+    const body = chatBodyRef.current;
+    if (!body) return;
+    const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+    if (shouldScrollToBottomRef.current || distanceFromBottom < 80) {
+      body.scrollTo({ top: body.scrollHeight, behavior: shouldScrollToBottomRef.current ? 'smooth' : 'auto' });
+      setShowScrollToBottom(false);
+      shouldScrollToBottomRef.current = false;
+    } else {
+      setShowScrollToBottom(true);
+    }
+  }, [messages, showOrderPicker, conversation?.status]);
 
   const orderedMessages = sortChatMessages(messages.filter(message => !isLocalChatMessage(message) || message.createdAt));
 
@@ -304,7 +335,15 @@ export default function CustomerChat() {
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-xl p-2 transition hover:bg-white/15" aria-label="Close chat"><X className="h-5 w-5" /></button>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto bg-surface-50 p-4">
+          <div
+            ref={chatBodyRef}
+            onScroll={event => {
+              const body = event.currentTarget;
+              const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+              setShowScrollToBottom(distanceFromBottom > 80);
+            }}
+            className="relative flex-1 space-y-3 overflow-y-auto bg-surface-50 p-4"
+          >
             {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && (
               <div className="space-y-2 pt-2">
                 {FAQS.map(faq => <button key={faq.question} type="button" onClick={() => askFaq(faq)} disabled={sending} className="block w-full rounded-xl border border-primary-100 bg-white px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-50">{faq.question}</button>)}
@@ -331,6 +370,7 @@ export default function CustomerChat() {
             )}
             {conversation?.status === 'requested' && <div className="rounded-2xl rounded-tl-sm border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">Waiting for an admin to accept your chat request. Please keep this chat open for the reply.</div>}
             {conversation?.status === 'open' && <div className="rounded-2xl rounded-tl-sm border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">You are talking with an admin now.</div>}
+            {showScrollToBottom && <button type="button" onClick={() => scrollConversationToBottom()} className="sticky bottom-1 left-full z-10 ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary-500 text-white shadow-lg ring-2 ring-white transition hover:bg-primary-600" aria-label="Scroll to newest messages"><ChevronDown className="h-5 w-5" /></button>}
           </div>
           <div className="border-t border-surface-200 bg-white p-3">
             {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && (adminSupportAvailable ? <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button> : <div className="mb-2 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-center text-[11px] font-bold text-surface-500">Admin support is available from 8:00 AM to 8:00 PM.</div>)}
