@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useDynamicBranding } from '../hooks/useDynamicBranding';
 import { Ban, Rocket, Coffee, Utensils } from 'lucide-react';
+import { STORE_LOCATION, STORE_FACEBOOK_URL } from '../constants/storeInfo';
 
 export default function Landing() {
   const [activeOrders, setActiveOrders] = useState([]);
@@ -390,7 +391,7 @@ export default function Landing() {
         <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-3 sm:px-6 md:grid-cols-2 md:px-8">
           <div className="min-w-0">
             <a
-              href="https://www.facebook.com/monabuque1"
+              href={STORE_FACEBOOK_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 shadow-sm transition-transform hover:scale-[1.02]"
@@ -404,7 +405,7 @@ export default function Landing() {
               </span>
             </a>
             <p className="mt-1 text-[10px] font-medium leading-snug text-white/90 sm:text-xs">
-              Villanueva Extension, Butuan City, Agusan del Norte<br />
+              {STORE_LOCATION}<br />
               Monday–Saturday: 9:00 AM–6:00 PM · Sunday: 9:00 AM–3:00 PM
             </p>
           </div>

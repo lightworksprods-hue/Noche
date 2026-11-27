@@ -4,6 +4,7 @@ import { ChevronDown, Headset, Send, UserRound, X } from 'lucide-react';
 import { getChatConversation, getOrder, getOrderHistory, getPublicTenant, markChatRead, sendChatMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { STORE_LOCATION, STORE_MAP_URL, STORE_HOURS, STORE_FACEBOOK_URL } from '../constants/storeInfo';
 
 const FAQS = [
   { question: 'How do I place an order?', answer: 'Choose your products, select the available date and time, complete your contact details, then submit your payment.' },
@@ -36,10 +37,10 @@ const getBotReply = (message, store = {}) => {
   const storeTopics = /\b(store|order|orders|payment|pay|price|cost|menu|product|food|lechon|schedule|date|pickup|pick up|delivery|deliver|cancel|refund|promo|available|availability|stock|contact|phone|email|hours|open|location|address|admin|support|book|booking)\b/.test(text);
   if (!isGreeting && !storeTopics) return 'I can only help with this store, our menu, orders, payments, schedules, delivery, pickup, and customer support. Please ask me something related to the store.';
   if (/\b(where|location|located|address)\b/.test(text)) {
-    if (store.storeLat && store.storeLng) return `${store.name || 'Our store'} is located at the store pin on Google Maps: https://www.google.com/maps/search/?api=1&query=${store.storeLat},${store.storeLng}`;
-    return `I’m sorry, ${store.name || 'the store'}’s location has not been added yet. Please tap “Talk to an admin” for directions.`;
+    return `${store.name || 'Our store'} is located at ${STORE_LOCATION}.`;
   }
-  if (/\b(hours|open|closing|closed)\b/.test(text)) return store.storeClosed ? `${store.name || 'The store'} is currently closed. Please check back later or contact an admin.` : `${store.name || 'The store'} is currently open. Admin support is available from 8:00 AM to 8:00 PM.`;
+  if (/\b(hours|open|closing|closed)\b/.test(text)) return store.storeClosed ? `${store.name || 'The store'} is currently closed. Please check back later or contact an admin.` : `${store.name || 'The store'} is currently open. Store hours: ${STORE_HOURS}`;
+  if (/\b(facebook|fb|social media)\b/.test(text)) return `You can follow ${store.name || 'our store'} on Facebook for updates and announcements.`;
   if (/\b(what('?s| is) the store|store name|who are you|about the store)\b/.test(text)) return `${store.name || 'This store'} is served by Ms. Suki, your store assistant.${store.description ? ` ${store.description}` : ''}`;
   if (isGreeting) return 'Hi! I’m Ms. Suki. How can I help you today? You can choose one of the options below or ask me a question.';
   if (text.includes('thank')) return 'You’re welcome! I’m here if you need anything else.';
@@ -238,6 +239,11 @@ export default function CustomerChat() {
           id: `bot-${Date.now()}`,
           senderType: 'bot',
           content: getBotReply(text, storeInfo),
+          link: /\b(where|location|located|address)\b/.test(text)
+            ? { href: STORE_MAP_URL, label: 'Open store location in Google Maps' }
+            : /\b(facebook|fb|social media)\b/.test(text)
+              ? { href: STORE_FACEBOOK_URL, label: 'Visit the store Facebook page' }
+              : undefined,
           createdAt: new Date().toISOString()
         }]);
       }
@@ -272,8 +278,6 @@ export default function CustomerChat() {
     ]);
   };
 
-  const showWelcome = !messages.length && !loading;
-
   if (location.pathname === '/' || location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
 
   return (
@@ -293,13 +297,13 @@ export default function CustomerChat() {
                 {FAQS.map(faq => <button key={faq.question} type="button" onClick={() => askFaq(faq)} disabled={sending} className="block w-full rounded-xl border border-primary-100 bg-white px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-50">{faq.question}</button>)}
               </div>
             )}
-            {showWelcome && <div className="rounded-2xl rounded-tl-sm bg-white p-3 text-sm text-surface-700 shadow-sm">Hi! I’m Ms. Suki, the store assistant. I can help with orders, payments, schedules, and order updates.</div>}
             {messages.map(message => (
               <div key={message.id} className={`flex ${message.senderType === 'customer' ? 'justify-end' : 'justify-start'}`}>
                 {message.senderType === 'admin' && <div className="mr-2 mt-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700"><UserRound className="h-4 w-4" aria-hidden="true" /></div>}
                 <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${message.senderType === 'customer' ? 'rounded-br-sm bg-primary-500 text-white' : 'rounded-bl-sm bg-white text-surface-700'}`}>
                   {message.senderType === 'admin' && <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-primary-600">Admin</p>}
                   {message.content}
+                  {message.link && <a href={message.link.href} target="_blank" rel="noreferrer" className="mt-2 block font-bold text-primary-600 underline underline-offset-2">{message.link.label}</a>}
                 </div>
               </div>
             ))}
