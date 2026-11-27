@@ -81,6 +81,12 @@ const sortChatMessages = messages => {
   })).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 };
 
+const formatMessageTime = createdAt => {
+  if (!createdAt) return '';
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(date);
+};
+
 export default function CustomerChat() {
   const location = useLocation();
   const { user } = useAuth();
@@ -105,7 +111,7 @@ export default function CustomerChat() {
     setMessages(current => {
       const serverMessageIds = new Set(serverMessages.map(message => message.id));
       const localMessages = current
-        .filter(message => isLocalChatMessage(message) && !serverMessageIds.has(message.id))
+        .filter(message => isLocalChatMessage(message) && message.createdAt && !serverMessageIds.has(message.id))
       return sortChatMessages([...serverMessages, ...localMessages]);
     });
   };
@@ -283,7 +289,7 @@ export default function CustomerChat() {
     ]);
   };
 
-  const orderedMessages = sortChatMessages(messages);
+  const orderedMessages = sortChatMessages(messages.filter(message => !isLocalChatMessage(message) || message.createdAt));
 
   if (location.pathname === '/' || location.pathname.startsWith('/admin') || location.pathname.startsWith('/superadmin')) return null;
 
@@ -311,6 +317,7 @@ export default function CustomerChat() {
                   {message.senderType === 'admin' && <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-primary-600">Admin</p>}
                   {message.content}
                   {message.link && <a href={message.link.href} target="_blank" rel="noreferrer" className="mt-2 block font-bold text-primary-600 underline underline-offset-2">{message.link.label}</a>}
+                  {formatMessageTime(message.createdAt) && <time dateTime={message.createdAt} className={`mt-1 block text-[10px] ${message.senderType === 'customer' ? 'text-white/70' : 'text-surface-400'}`}>{formatMessageTime(message.createdAt)}</time>}
                 </div>
               </div>
             ))}

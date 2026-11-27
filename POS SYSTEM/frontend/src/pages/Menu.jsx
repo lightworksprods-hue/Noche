@@ -25,6 +25,34 @@ const getPackageDrinkLimits = (eventPackage) => PACKAGE_DRINK_LIMITS[eventPackag
 const getPackagePax = (eventPackage) => eventPackage?.features?.split(',').map(item => item.trim()).find(item => /pax/i.test(item));
 const isBookingFullyPaid = (booking) => booking?.paymentStatus === 'paid' || (booking?.paymentStatus === 'verified' && (booking?.paymentMode === 'full_payment' || booking?.paymentMethod === 'cash'));
 
+const formatAvailabilityTime = value => {
+  if (!value) return '';
+  const [hours, minutes] = value.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return value;
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
+
+const formatAvailabilityDate = entry => {
+  if (!entry?.date) return '';
+  const date = new Date(`${entry.date}T12:00:00`);
+  const dateLabel = Number.isNaN(date.getTime())
+    ? entry.date
+    : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+  const timeLabel = entry.startTime && entry.endTime
+    ? ` · ${formatAvailabilityTime(entry.startTime)}–${formatAvailabilityTime(entry.endTime)}`
+    : '';
+  return `${dateLabel}${timeLabel}`;
+};
+
+const getAvailabilityLabel = product => {
+  const dates = product?.availabilitySchedule?.dates;
+  if (!Array.isArray(dates) || !dates.length) return null;
+  const firstDate = formatAvailabilityDate(dates[0]);
+  return dates.length > 1 ? `${firstDate} + ${dates.length - 1} more date${dates.length > 2 ? 's' : ''}` : firstDate;
+};
+
 const getOptimizedImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
 
@@ -821,6 +849,7 @@ export default function Menu() {
                     <div className="p-3 md:p-5 flex flex-col flex-1 w-full bg-white overflow-hidden">
                       <h3 className="font-heading font-bold text-surface-900 text-[15px] md:text-xl mb-0.5 md:mb-1 line-clamp-2 md:line-clamp-1 leading-tight">{product.name}</h3>
                       {product.isPreOrder && <span className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-blue-700">Available as pre-order</span>}
+                      {getAvailabilityLabel(product) && <span className="mb-1 block text-[10px] font-bold leading-snug text-blue-700">Available: {getAvailabilityLabel(product)}</span>}
                       {product.stock > 0 && product.stock < 5 && (
                         <span className="inline-flex items-center gap-1 text-[10px] md:text-[11px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mb-1 animate-pulse uppercase tracking-wide">
                           🔥 Only {product.stock} left!
