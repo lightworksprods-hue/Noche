@@ -276,14 +276,6 @@ export default function CustomerChat() {
                 {FAQS.map(faq => <button key={faq.question} type="button" onClick={() => askFaq(faq)} disabled={sending} className="block w-full rounded-xl border border-primary-100 bg-white px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-50">{faq.question}</button>)}
               </div>
             )}
-            {showOrderPicker && (
-              <div className="space-y-2 rounded-2xl border border-primary-100 bg-white p-3">
-                <p className="text-xs font-black uppercase tracking-wide text-surface-500">Choose an active order</p>
-                {loadingOrders && <p className="text-xs text-surface-500">Loading your active orders...</p>}
-                {!loadingOrders && !activeOrders.length && <p className="text-xs text-surface-500">No active orders found.</p>}
-                {!loadingOrders && activeOrders.map(order => <button key={order.orderNumber} type="button" onClick={() => checkOrderStatus(order)} className="block w-full rounded-xl border border-primary-100 bg-primary-50 px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-100">Order #{order.orderNumber}</button>)}
-              </div>
-            )}
             {showWelcome && <div className="rounded-2xl rounded-tl-sm bg-white p-3 text-sm text-surface-700 shadow-sm">Hi! I’m Ms. Suki, the store assistant. I can help with orders, payments, schedules, and order updates.</div>}
             {messages.map(message => (
               <div key={message.id} className={`flex ${message.senderType === 'customer' ? 'justify-end' : 'justify-start'}`}>
@@ -294,13 +286,21 @@ export default function CustomerChat() {
                 </div>
               </div>
             ))}
+            {showOrderPicker && (
+              <div className="space-y-2 rounded-2xl border border-primary-100 bg-white p-3">
+                <p className="text-xs font-black uppercase tracking-wide text-surface-500">Choose an active order</p>
+                {loadingOrders && <p className="text-xs text-surface-500">Loading your active orders...</p>}
+                {!loadingOrders && !activeOrders.length && <p className="text-xs text-surface-500">No active orders found.</p>}
+                {!loadingOrders && activeOrders.map(order => <button key={order.orderNumber} type="button" onClick={() => checkOrderStatus(order)} className="block w-full rounded-xl border border-primary-100 bg-primary-50 px-3 py-2 text-left text-xs font-bold text-primary-700 transition hover:border-primary-300 hover:bg-primary-100">Order #{order.orderNumber}</button>)}
+              </div>
+            )}
             {conversation?.status === 'requested' && <div className="rounded-2xl rounded-tl-sm border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">Waiting for an admin to accept your chat request. Please keep this chat open for the reply.</div>}
             {conversation?.status === 'open' && <div className="rounded-2xl rounded-tl-sm border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">You are talking with an admin now.</div>}
           </div>
           <div className="border-t border-surface-200 bg-white p-3">
             {(!conversation || conversation.status === 'bot' || conversation.status === 'closed') && (adminSupportAvailable ? <button type="button" onClick={() => send('I would like to talk to an admin.', true)} disabled={sending} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary-700 transition hover:bg-primary-100"><UserRound className="h-4 w-4" /> Talk to an admin</button> : <div className="mb-2 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-center text-[11px] font-bold text-surface-500">Admin support is available from 8:00 AM to 8:00 PM.</div>)}
             <form onSubmit={event => { event.preventDefault(); send(input, false); }} className="flex items-center gap-2">
-              <input value={input} onChange={event => setInput(event.target.value)} disabled={conversation?.status === 'requested' || showOrderPicker} placeholder={conversation?.status === 'requested' ? 'Waiting for admin acceptance...' : showOrderPicker ? 'Choose an active order above...' : conversation?.status === 'open' ? 'Message the admin...' : 'Ask a question...'} className="min-w-0 flex-1 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-sm outline-none focus:border-primary-400 disabled:cursor-not-allowed disabled:opacity-60" />
+              <input value={input} onChange={event => setInput(event.target.value)} disabled={conversation?.status === 'requested' || (showOrderPicker && (loadingOrders || activeOrders.length > 0))} placeholder={conversation?.status === 'requested' ? 'Waiting for admin acceptance...' : showOrderPicker && (loadingOrders || activeOrders.length > 0) ? 'Choose an active order above...' : conversation?.status === 'open' ? 'Message the admin...' : 'Ask a question...'} className="min-w-0 flex-1 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-sm outline-none focus:border-primary-400 disabled:cursor-not-allowed disabled:opacity-60" />
               <button type="submit" disabled={!input.trim() || sending || conversation?.status === 'requested'} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Send message"><Send className="h-4 w-4" /></button>
             </form>
           </div>
